@@ -1,4 +1,4 @@
-package com.shimpyo.app
+package com.databox.blackbox
 
 import android.os.Bundle
 import android.view.Gravity

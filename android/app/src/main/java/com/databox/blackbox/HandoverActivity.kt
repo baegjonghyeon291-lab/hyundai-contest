@@ -1,4 +1,4 @@
-package com.shimpyo.app
+package com.databox.blackbox
 
 import android.content.Intent
 import android.os.Bundle

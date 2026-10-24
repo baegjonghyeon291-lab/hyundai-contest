@@ -1,4 +1,4 @@
-package com.shimpyo.app
+package com.databox.blackbox
 
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -62,6 +62,7 @@ class CrashReport(val event: CrashEvent) {
     /** 리포트 본문 줄들. (제목, 내용, 운전자에게 유리한 사실인지) */
     fun lines(): List<Triple<String, String, Boolean?>> = buildList {
         add(Triple("감지", "${event.cause} · 최대 충격 %.1f G".format(event.peakG), null))
+        add(Triple("충격 방향", event.direction?.label ?: "보정 중 (주행 데이터가 더 쌓이면 표시)", null))
         add(Triple("충돌 순간 속도", speedAtCrash?.let { "%.1f km/h".format(it) } ?: "기록 없음", null))
         maxSpeed5sBefore?.let { add(Triple("충돌 전 5초 최고 속도", "%.1f km/h".format(it), null)) }
 
@@ -91,6 +92,7 @@ class CrashReport(val event: CrashEvent) {
         add(Triple("기어", gearLabel(gearAtCrash), null))
         steeringAtCrash?.let { add(Triple("핸들 각도", "%.0f° %s".format(kotlin.math.abs(it), if (it < 0) "왼쪽" else if (it > 0) "오른쪽" else ""), null)) }
         add(Triple("위치", if (lat != null && lon != null) "%.5f, %.5f".format(lat, lon) else "기록 없음", null))
+        event.notes.forEach { add(Triple("안전벨트", it, it.contains("안내함"))) }
     }
 
     companion object {

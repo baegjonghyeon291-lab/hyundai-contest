@@ -1,4 +1,4 @@
-package com.shimpyo.app
+package com.databox.blackbox
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -37,6 +37,12 @@ import ai.pleos.playground.vehicle.listener.BrakePedalStatusListener
 import ai.pleos.playground.vehicle.listener.GearSelectionListener
 import ai.pleos.playground.vehicle.listener.LightStateListener
 import ai.pleos.playground.vehicle.listener.SeatAirbagDeployedListener
+import ai.pleos.playground.vehicle.listener.SeatBeltBuckledStateListener
+import ai.pleos.playground.vehicle.listener.SeatOccupancyListener
+import ai.pleos.playground.tts.TextToSpeech
+import ai.pleos.playground.tts.constant.ErrorType
+import ai.pleos.playground.tts.constant.Mode
+import ai.pleos.playground.tts.listener.OnInitializeListener
 import ai.pleos.playground.vehicle.listener.SteeringWheelAngleListener
 import ai.pleos.playground.vehicle.listener.TurnSignalStateListener
 import ai.pleos.playground.vehicle.listener.WiperStateListener
@@ -66,13 +72,45 @@ class RecorderService : Service() {
     private var seatArea: SeatArea? = null
     private var hvacArea: SeatArea? = null
 
+    // 충격 방향 자동 보정
+    private lateinit var calibration: MountCalibration
+    private val recentSpeed = ArrayDeque<Pair<Long, Double>>()
+    private var lastCalibratedAt = 0L
+    @Volatile private var peakVector: Vec3? = null
+
+    // 주행 일지: P 상태가 이 시간 이상 이어지면 주행 종료
+    private var parkedSince: Long? = null
+
+    // 안전벨트 안내: 좌석별 탑승·착용 상태
+    private val occupied = HashMap<String, Boolean>()
+    private val buckled = HashMap<String, Boolean>()
+    private val lastBeltNoticeAt = HashMap<String, Long>()
+    private val seatListeners = mutableListOf<() -> Unit>()
+
+    private var tts: TextToSpeech? = null
+    @Volatile private var ttsReady = false
+
+    private val ticker = object : Runnable {
+        override fun run() {
+            runCatching { onEverySecond() }.onFailure { warn("주기 작업 오류: ${it.message}") }
+            handler.postDelayed(this, 1_000)
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
+
+    // 시스템이 서비스를 정리해도 다시 살아나 기록을 이어 간다
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int) = START_STICKY
 
     override fun onCreate() {
         super.onCreate()
         startForegroundWithNotice()
         Recorder.running = true
         Recorder.service = this
+        calibration = MountCalibration(this)
+        Recorder.calibrationSamples = calibration.samples
+        TripStore(this).purgeOlderThan(TripStore.RETENTION_DAYS)
+        initTts()
 
         vehicle = Vehicle(this).also { it.initialize() }
         location = FusedLocation(this).also { it.initialize() }
@@ -81,12 +119,19 @@ class RecorderService : Service() {
         handler.postDelayed({
             runCatching { subscribeVehicle() }.onFailure { warn("차량 신호 구독 실패: ${it.message}") }
             runCatching { subscribeLocation() }.onFailure { warn("위치 구독 실패: ${it.message}") }
+            runCatching { subscribeSeats() }.onFailure { warn("좌석 구독 실패: ${it.message}") }
         }, 1500)
         subscribeSpeed()
         subscribeAccelerometer()
+        handler.postDelayed(ticker, 2_000)
     }
 
     override fun onDestroy() {
+        handler.removeCallbacks(ticker)
+        endTrip()
+        calibration.save()
+        tts?.release()
+        seatListeners.forEach { runCatching { it() } }
         Recorder.running = false
         Recorder.service = null
         sensorManager.unregisterListener(accelListener)
@@ -114,8 +159,11 @@ class RecorderService : Service() {
     private val speedCallback = object : CarPropertyManager.CarPropertyEventCallback {
         override fun onChangeEvent(value: CarPropertyValue<*>) {
             val mps = (value.value as? Float) ?: return
-            buffer.add(SignalKey.SPEED_KPH, mps * 3.6)
-            Recorder.handover?.onSpeed(mps * 3.6)
+            val kph = mps * 3.6
+            buffer.add(SignalKey.SPEED_KPH, kph)
+            Recorder.handover?.onSpeed(kph)
+            Recorder.trip?.onSpeed(kph)
+            learnMountDirection(kph)
         }
         override fun onErrorEvent(propertyId: Int, areaId: Int) = warn("차속 수신 오류")
     }
@@ -133,7 +181,15 @@ class RecorderService : Service() {
     // ── Pleos Vehicle SDK 신호 ────────────────────────────────────────────
 
     private val gearListener = object : GearSelectionListener {
-        override fun onSelected(gear: VehicleGear?) = buffer.add(SignalKey.GEAR, gearCode(gear))
+        override fun onSelected(gear: VehicleGear?) {
+            buffer.add(SignalKey.GEAR, gearCode(gear))
+            if (gear == VehicleGear.GEAR_PARK) {
+                if (parkedSince == null) parkedSince = System.currentTimeMillis()
+            } else if (gear != null && gear != VehicleGear.GEAR_UNKNOWN) {
+                parkedSince = null
+                if (Recorder.trip == null) Recorder.trip = TripTracker()
+            }
+        }
         override fun onFailed(e: Exception) = warn("기어: ${e.message}")
     }
     private val turnSignalListener = object : TurnSignalStateListener {
@@ -246,18 +302,19 @@ class RecorderService : Service() {
     private val locationListener = object : FusedLocationListener {
         override fun onChanged(data: LocationData?) {
             data ?: return
-            buffer.add(SignalKey.LAT, data.latitude)
-            buffer.add(SignalKey.LON, data.longitude)
-            Recorder.handover?.onLocation(data.latitude, data.longitude)
+            onPosition(data.latitude, data.longitude)
         }
         override fun onError(e: Exception) = warn("위치: ${e.message}")
     }
 
     // Pleos 위치가 안 들어오는 환경(에뮬레이터 등)을 위해 표준 GPS도 함께 받는다
-    private val gpsListener = android.location.LocationListener { loc ->
-        buffer.add(SignalKey.LAT, loc.latitude)
-        buffer.add(SignalKey.LON, loc.longitude)
-        Recorder.handover?.onLocation(loc.latitude, loc.longitude)
+    private val gpsListener = android.location.LocationListener { loc -> onPosition(loc.latitude, loc.longitude) }
+
+    private fun onPosition(lat: Double, lon: Double) {
+        buffer.add(SignalKey.LAT, lat)
+        buffer.add(SignalKey.LON, lon)
+        Recorder.handover?.onLocation(lat, lon)
+        Recorder.trip?.onLocation(lat, lon)
     }
 
     private fun subscribeLocation() {
@@ -276,7 +333,14 @@ class RecorderService : Service() {
             val (x, y, z) = event.values
             val impactG = abs(sqrt(x * x + y * y + z * z) / SensorManager.GRAVITY_EARTH - 1.0)
             val now = System.currentTimeMillis()
+            val vec = Vec3(x.toDouble(), y.toDouble(), z.toDouble())
             Recorder.liveImpactG = impactG
+            calibration.onAccel(vec)
+            // 사고 구간에서 가장 센 충격 순간의 방향을 남긴다
+            if (impactG >= IMPACT_THRESHOLD_G) {
+                val p = peakVector
+                if (p == null || abs(p.length / SensorManager.GRAVITY_EARTH - 1.0) < impactG) peakVector = vec
+            }
             // 평상시엔 20Hz로만 저장, 충격 순간은 놓치지 않게 즉시 저장
             if (now - lastAccelSavedAt >= ACCEL_SAVE_INTERVAL_MS || impactG >= IMPACT_THRESHOLD_G) {
                 lastAccelSavedAt = now
@@ -319,11 +383,149 @@ class RecorderService : Service() {
                 cause = p.cause,
                 peakG = p.peakG,
                 samples = buffer.snapshot(p.time - PRE_MS, p.time + POST_MS),
+                direction = peakVector?.let { calibration.classify(it) },
+                notes = beltNotesAt(p.time),
             )
             CrashStore(this).save(event)
+            Recorder.trip?.crashIds?.add(event.id)
+            peakVector = null
             Recorder.pending = null
             Recorder.savedCount++
         }, POST_MS + 200)
+    }
+
+    // ── 충격 방향 보정: 평소 가감속으로 '앞쪽'을 학습 ──────────────────────────────
+
+    private fun learnMountDirection(kph: Double) {
+        val now = System.currentTimeMillis()
+        recentSpeed.addLast(now to kph)
+        while (recentSpeed.size > 1 && now - recentSpeed.first().first > 1_000) recentSpeed.removeFirst()
+        val (t0, v0) = recentSpeed.first()
+        if (now - t0 < 600 || now - lastCalibratedAt < 300) return
+        val rate = (kph - v0) * 1000.0 / (now - t0)
+        val straight = abs(buffer.latest(SignalKey.STEERING_DEG) ?: 0.0) < 15
+        // 충격 순간은 제외 (보정이 아니라 사고)
+        if (abs(rate) >= 4 && straight && Recorder.liveImpactG < 1.0) {
+            calibration.onLongitudinal(rate)
+            lastCalibratedAt = now
+            Recorder.calibrationSamples = calibration.samples
+        }
+    }
+
+    // ── 주행 일지 ─────────────────────────────────────────────────────────
+
+    private fun endTrip() {
+        val trip = Recorder.trip ?: return
+        Recorder.trip = null
+        // 시동만 걸었다 끈 기록은 남기지 않는다
+        if (trip.distanceKm < 0.05 && trip.crashIds.isEmpty()) return
+        TripStore(this).save(trip.finish())
+        Recorder.savedCount++
+    }
+
+    private fun onEverySecond() {
+        val now = System.currentTimeMillis()
+        val kph = buffer.latest(SignalKey.SPEED_KPH) ?: 0.0
+        Recorder.trip?.onSecond(kph, now)
+        parkedSince?.let { if (now - it >= TRIP_END_PARK_MS) { endTrip(); parkedSince = null } }
+        checkSeatBelts(now, kph)
+    }
+
+    // ── 안전벨트 안내 ─────────────────────────────────────────────────────
+
+    private fun subscribeSeats() {
+        val seat = vehicle.getSeat()
+        seat.checkSeatOccupancyCapabilities(
+            { areas: List<SeatArea> ->
+                areas.forEach { area ->
+                    val name = seatName(area)
+                    val l = object : SeatOccupancyListener {
+                        override fun onSeatOccupancyUpdated(v: Boolean?) {
+                            // Vehicle SDK 2.3.2는 VHAL 값 1을 true로 바꾸는데, 표준 SEAT_OCCUPANCY에서 1은 VACANT(빈자리)·2가 OCCUPIED다.
+                            // 에뮬레이터 콘솔로 탑승시킨 좌석이 false로 오는 것까지 확인 → SDK 값을 뒤집어 '탑승'으로 쓴다.
+                            occupied[name] = v == false
+                        }
+                        override fun onFailed(e: Exception) = warn("탑승 감지($name): ${e.message}")
+                    }
+                    seat.registerSeatOccupancy(area, l)
+                    seatListeners += { seat.unregisterSeatOccupancy(area, l) }
+                }
+            },
+            { e -> warn("탑승 감지 미지원: ${e.message}") },
+        )
+        seat.checkSeatBeltBuckledCapabilities(
+            { areas: List<SeatArea> ->
+                areas.forEach { area ->
+                    val name = seatName(area)
+                    val l = object : SeatBeltBuckledStateListener {
+                        override fun onSeatBeltBuckledStateUpdated(v: Boolean?) { v?.let { buckled[name] = it } }
+                        override fun onFailed(e: Exception) = warn("벨트 감지($name): ${e.message}")
+                    }
+                    seat.registerSeatBeltBuckledState(area, l)
+                    seatListeners += { seat.unregisterSeatBeltBuckledState(area, l) }
+                }
+            },
+            { e -> warn("벨트 감지 미지원: ${e.message}") },
+        )
+    }
+
+    /** 주행 중 탑승했는데 벨트를 안 맨 좌석이 있으면 1분마다 음성 안내하고 기록한다. */
+    private fun checkSeatBelts(now: Long, kph: Double) {
+        val unbuckled = unbuckledSeats()
+        Recorder.unbuckledSeats = unbuckled
+        if (kph < BELT_CHECK_MIN_KPH) return
+        for (name in unbuckled) {
+            if (now - (lastBeltNoticeAt[name] ?: 0L) < BELT_REPEAT_MS) continue
+            lastBeltNoticeAt[name] = now
+            val notice = BeltNotice(now, name)
+            Recorder.trip?.beltNotices?.add(notice)
+            Recorder.lastBeltNotice = notice
+            say("$name 안전벨트를 매 주세요")
+            Log.i(TAG, "벨트 안내: $name")
+        }
+    }
+
+    private fun unbuckledSeats() = occupied.filter { it.value }.keys.filter { buckled[it] != true }.sorted()
+
+    /** 사고 리포트용: 충돌 시점 벨트 미착용 좌석과 그 전에 안내했는지. */
+    private fun beltNotesAt(crashTime: Long): List<String> = unbuckledSeats().map { name ->
+        val last = Recorder.trip?.beltNotices?.lastOrNull { it.seat == name && it.t <= crashTime }
+        if (last != null) "$name 미착용 — 충돌 %s 전 안내함".format(agoText(crashTime - last.t))
+        else "$name 미착용 (안내 전)"
+    }
+
+    private fun agoText(ms: Long): String {
+        val s = ms / 1000
+        return if (s >= 60) "${s / 60}분 ${s % 60}초" else "${s}초"
+    }
+
+    private fun seatName(area: SeatArea): String = when (area.values.firstOrNull()) {
+        SeatValue.ROW_1_LEFT -> "운전석"
+        SeatValue.ROW_1_RIGHT -> "조수석"
+        SeatValue.ROW_2_LEFT -> "뒷좌석 왼쪽"
+        SeatValue.ROW_2_CENTER -> "뒷좌석 가운데"
+        SeatValue.ROW_2_RIGHT -> "뒷좌석 오른쪽"
+        else -> "3열 좌석"
+    }
+
+    // ── 음성 안내 (Pleos TTS, 기기 내장 모드) ───────────────────────────────
+
+    private fun initTts() {
+        runCatching {
+            tts = TextToSpeech(this, Mode.ON_DEVICE).also { t ->
+                t.initialize(object : OnInitializeListener {
+                    override fun onSuccess() {
+                        runCatching { t.setLocale(java.util.Locale.KOREA) }
+                        ttsReady = true
+                    }
+                    override fun onFailure(type: ErrorType) = warn("음성 안내 초기화 실패: $type")
+                })
+            }
+        }.onFailure { warn("음성 안내 미지원: ${it.message}") }
+    }
+
+    private fun say(text: String) {
+        if (ttsReady) runCatching { tts?.speak(text, false) }.onFailure { warn("음성 안내 실패: ${it.message}") }
     }
 
     private fun startForegroundWithNotice() {
@@ -361,6 +563,9 @@ class RecorderService : Service() {
         const val POST_MS = 10_000L
         private const val CRASH_COOLDOWN_MS = 15_000L
         private const val ACCEL_SAVE_INTERVAL_MS = 50L
+        private const val TRIP_END_PARK_MS = 60_000L
+        private const val BELT_CHECK_MIN_KPH = 5.0
+        private const val BELT_REPEAT_MS = 60_000L
     }
 }
 
@@ -377,4 +582,8 @@ object Recorder {
     @Volatile var lastWarning: String? = null
     @Volatile var service: RecorderService? = null
     @Volatile var handover: HandoverTracker? = null
+    @Volatile var trip: TripTracker? = null
+    @Volatile var calibrationSamples = 0
+    @Volatile var unbuckledSeats: List<String> = emptyList()
+    @Volatile var lastBeltNotice: BeltNotice? = null
 }

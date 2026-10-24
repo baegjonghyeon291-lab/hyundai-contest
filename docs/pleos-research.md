@@ -49,3 +49,10 @@
 ## 참고
 - 2025년 Pleos Connect 앱 아이디어 공모전 대상: **'창밖동화'** (위치 + 생성형 AI로 창밖 풍경 기반 동화) → 비슷한 아이디어는 피할 것
 - 샘플 앱: Vehicle SDK Sample App (도메인별 조회/제어/구독 체험)
+
+## SDK 검증 중 발견한 이슈 (2026-10-24)
+- **Vehicle SDK 2.3.2 `getCurrentSeatOccupancy` / `registerSeatOccupancy` 값 반전**: SDK가 VHAL 정수 값 `1`을 `true`로 변환하는데, Android 표준 `VehicleSeatOccupancyState`는 `1 = VACANT`, `2 = OCCUPIED`. 에뮬레이터 Virtual Console에서 탑승시킨 좌석이 `false`로 수신됨을 확인 → 앱에서 반전 처리 (`RecorderService.subscribeSeats`). SDK 업데이트 시 재확인 필요.
+- **Virtual Console 시트 위치(slide 등) 조작이 VHAL에 반영되지 않음** (콘솔 카탈로그에서도 해당 항목 visible:false).
+- **에어백 전개(SEAT_AIRBAGS_DEPLOYED)**: 에뮬레이터 미지원(ERROR_NOT_SUPPORTED_PROPERTY).
+- **Pleos FusedLocation**: 에뮬레이터에서 위치 미수신 → 표준 LocationManager(GPS) 병행.
+- 차속은 Vehicle SDK에 없음 → 표준 Car API `PERF_VEHICLE_SPEED` (`android.car.permission.CAR_SPEED`, 런타임 권한).

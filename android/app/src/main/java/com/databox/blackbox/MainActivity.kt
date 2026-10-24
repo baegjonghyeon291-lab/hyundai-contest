@@ -1,4 +1,4 @@
-package com.shimpyo.app
+package com.databox.blackbox
 
 import android.Manifest
 import android.content.Intent
@@ -29,7 +29,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var listBox: LinearLayout
     private lateinit var tabCrash: TextView
     private lateinit var tabHandover: TextView
-    private var showCrashes = true
+    private lateinit var tabTrip: TextView
+    private lateinit var beltBanner: TextView
+    private lateinit var calibView: TextView
+    private var tab = Tab.CRASH
+
+    private enum class Tab { CRASH, HANDOVER, TRIP }
     private var shownCount = -1
     private var handoverShown: HandoverTracker? = null
     private var handoverRendered = false
@@ -109,6 +114,13 @@ class MainActivity : AppCompatActivity() {
         }
         impact.text = "%.2f G".format(Recorder.liveImpactG)
         impact.setTextColor(if (Recorder.liveImpactG >= RecorderService.IMPACT_THRESHOLD_G) Palette.bad else Palette.text)
+
+        val seats = Recorder.unbuckledSeats
+        beltBanner.visibility = if (seats.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE
+        beltBanner.text = "⚠️ 안전벨트 미착용: ${seats.joinToString(", ")} — 주행 중 음성 안내하고 기록합니다"
+        val n = Recorder.calibrationSamples
+        calibView.text = if (n >= 15) "충격 방향 보정 완료" else "충격 방향 보정 중 ($n/15) · 평소처럼 주행하면 자동 완료"
+        calibView.setTextColor(if (n >= 15) Palette.good else Palette.sub)
     }
 
     // ── 맡김 모드 ─────────────────────────────────────────────────────────
@@ -156,11 +168,23 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderList() {
         shownCount = Recorder.savedCount
-        tabCrash.background = if (showCrashes) rounded(Palette.cardHi, 18f) else null
-        tabHandover.background = if (!showCrashes) rounded(Palette.cardHi, 18f) else null
+        tabCrash.background = if (tab == Tab.CRASH) rounded(Palette.cardHi, 18f) else null
+        tabHandover.background = if (tab == Tab.HANDOVER) rounded(Palette.cardHi, 18f) else null
+        tabTrip.background = if (tab == Tab.TRIP) rounded(Palette.cardHi, 18f) else null
         listBox.removeAllViews()
         val fmt = SimpleDateFormat("MM.dd HH:mm:ss", Locale.KOREA)
-        if (showCrashes) {
+        if (tab == Tab.TRIP) {
+            val trips = TripStore(this).list()
+            if (trips.isEmpty()) listBox.addView(label("주행 일지가 없습니다. 주행하면 자동으로 쌓이고 ${TripStore.RETENTION_DAYS}일 보관됩니다.", 22f, Palette.sub))
+            trips.forEach { t ->
+                listBox.addView(listItem(
+                    "🛣 ${fmt.format(Date(t.start))}",
+                    "%.1f km · %.0f분 · 최고 %.0f km/h".format(t.distanceKm, t.durationMin, t.maxSpeedKph) +
+                        (if (t.beltNotices.isNotEmpty()) " · 벨트 안내 ${t.beltNotices.size}회" else "") +
+                        (if (t.crashIds.isNotEmpty()) " · 💥 사고 ${t.crashIds.size}건" else ""),
+                ) { startActivity(Intent(this, TripActivity::class.java).putExtra("id", t.id)) })
+            }
+        } else if (tab == Tab.CRASH) {
             val events = CrashStore(this).list()
             if (events.isEmpty()) listBox.addView(label("사고 기록이 없습니다. 충격이 감지되면 자동으로 저장됩니다.", 22f, Palette.sub))
             events.forEach { e ->
@@ -198,12 +222,18 @@ class MainActivity : AppCompatActivity() {
         speed = big(); gear = big(); signal = big(); brake = big(); lights = big(); impact = big()
         handoverBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         listBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        tabCrash = label("사고 기록", 26f, Palette.text, bold = true).apply {
-            setPadding(30, 12, 30, 12); setOnClickListener { showCrashes = true; renderList() }
+        fun tabLabel(text: String, t: Tab) = label(text, 26f, Palette.text, bold = true).apply {
+            setPadding(30, 12, 30, 12); setOnClickListener { tab = t; renderList() }
         }
-        tabHandover = label("맡김 기록", 26f, Palette.text, bold = true).apply {
-            setPadding(30, 12, 30, 12); setOnClickListener { showCrashes = false; renderList() }
+        tabCrash = tabLabel("사고 기록", Tab.CRASH)
+        tabHandover = tabLabel("맡김 기록", Tab.HANDOVER)
+        tabTrip = tabLabel("주행 일지", Tab.TRIP)
+        beltBanner = label("", 26f, Palette.warn, bold = true).apply {
+            background = rounded(android.graphics.Color.argb(40, 251, 191, 36), 18f)
+            setPadding(28, 16, 28, 16)
+            visibility = android.view.View.GONE
         }
+        calibView = label("", 20f, Palette.sub)
 
         val live = card(
             label("실시간 차량 상태", 22f, Palette.sub),
@@ -211,13 +241,15 @@ class MainActivity : AppCompatActivity() {
             row(tile("속도 km/h", speed), tile("기어", gear), tile("방향지시등", signal)),
             LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; space(16) },
             row(tile("브레이크", brake), tile("전조등", lights), tile("충격 (기준 2.5G)", impact)),
+            LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; space(12) },
+            calibView,
         )
         val handover = card(label("맡김 모드", 22f, Palette.sub), handoverBox)
         val left = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(live); space(24); addView(handover)
         }
-        val right = card(row(tabCrash, tabHandover, gap = 8, weights = false), LinearLayout(this).apply { space(16) }, listBox)
+        val right = card(row(tabCrash, tabHandover, tabTrip, gap = 8, weights = false), LinearLayout(this).apply { space(16) }, listBox)
 
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -225,6 +257,8 @@ class MainActivity : AppCompatActivity() {
             addView(label("영상이 못 남기는 내 차의 순간을 숫자로 남깁니다", 22f, Palette.sub))
             space(10)
             addView(status)
+            space(10)
+            addView(beltBanner)
         }
         val columns = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL

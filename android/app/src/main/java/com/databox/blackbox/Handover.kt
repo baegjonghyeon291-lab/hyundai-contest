@@ -1,4 +1,4 @@
-package com.shimpyo.app
+package com.databox.blackbox
 
 import android.content.Context
 import org.json.JSONArray
@@ -67,9 +67,10 @@ data class HandoverRecord(
 }
 
 /**
- * 맡긴 동안 실시간 누적: 차속을 시간으로 적분해 거리 계산, 1초 속도 변화로 급가속·급제동 판단.
+ * 주행 통계 실시간 누적: 차속을 시간으로 적분해 거리 계산, 1초 속도 변화로 급가속·급제동 판단.
+ * 맡김 모드와 주행 일지가 같이 쓴다.
  */
-class HandoverTracker(val mode: HandoverMode, val before: CarSettings) {
+open class DriveStats {
     val start = System.currentTimeMillis()
     var distanceKm = 0.0; private set
     var maxSpeedKph = 0.0; private set
@@ -106,6 +107,14 @@ class HandoverTracker(val mode: HandoverMode, val before: CarSettings) {
         if (last == null || kotlin.math.abs(last.first - lat) + kotlin.math.abs(last.second - lon) > 0.0002) path += lat to lon
     }
 
+    companion object {
+        // 1초에 12km/h 이상 변화 ≈ 0.34G: 일반적인 급가속·급제동 기준
+        const val HARD_KPH_PER_SEC = 12.0
+        private const val HARD_EVENT_COOLDOWN_MS = 3_000L
+    }
+}
+
+class HandoverTracker(val mode: HandoverMode, val before: CarSettings) : DriveStats() {
     @Synchronized
     fun finish(after: CarSettings) = HandoverRecord(
         id = "handover_$start",
@@ -114,12 +123,6 @@ class HandoverTracker(val mode: HandoverMode, val before: CarSettings) {
         hardBrakes = hardBrakes, hardAccels = hardAccels,
         before = before, after = after, path = path.toList(),
     )
-
-    companion object {
-        // 1초에 12km/h 이상 변화 ≈ 0.34G: 일반적인 급가속·급제동 기준
-        const val HARD_KPH_PER_SEC = 12.0
-        private const val HARD_EVENT_COOLDOWN_MS = 3_000L
-    }
 }
 
 class HandoverStore(context: Context) {

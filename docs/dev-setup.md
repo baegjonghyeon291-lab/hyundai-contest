@@ -18,3 +18,9 @@
 6. 환경변수: `ANDROID_HOME`, `JAVA_HOME` (setx)
 
 확인: `adb shell pm list packages | grep pleos` → `ai.pleos.service.car` 등이 보이면 정상.
+
+## 앱 빌드 (2026-10-24 추가)
+- **JDK 17 필요**: `winget install --id EclipseAdoptium.Temurin.17.JDK -e` → `JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-17...` (Android Studio 내장 JBR 25는 Gradle 8.10과 호환 안 됨)
+- 빌드: `cd android && ./gradlew assembleDebug` / 설치: `adb install -r -g app/build/outputs/apk/debug/app-debug.apk`
+- release 서명: `android/keystore.properties`(gitignore)에 storeFile/storePassword/keyAlias/keyPassword. 키스토어는 이 PC의 `~/.android/databox-release.jks`. **다른 PC에서 같은 서명이 필요하면 이 두 파일을 USB 등으로 옮길 것** (GitHub에 올리지 말 것).
+- 앱 데이터는 user 10: `adb shell run-as com.databox.blackbox --user 10 ls files`

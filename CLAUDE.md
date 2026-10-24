@@ -26,6 +26,7 @@
 
 ## 진행 상황 / 결정 사항
 - (주제, 핵심 기능, 결정한 내용을 여기에 계속 기록 — 두 PC의 Claude가 이 파일로 맥락을 공유함)
+- 2026-10-24: **데이터 블랙박스 v1.0 (후보 기능 완료)** — 패키지 com.databox.blackbox. 부팅 자동 시작(BootReceiver+START_STICKY), 충격 방향 자동 보정(MountCalibration), 주행 일지 30일(trips/*.json.gz), 안전벨트 음성 안내(Pleos TTS ON_DEVICE)+기록, release APK(apk/), 제출용 README. 남은 것: APK 파일명에 성명 넣기(팀명_앱이름_release.apk 규정).
 - 2026-10-24: **데이터 블랙박스 v0.2** — 맡김 모드(발레/정비/대리/가족: 거리·최고속도·급제동/급가속·바뀐 설정·경로, 의심 사유 판단), QR → https://hyundai-contest.vercel.app/#r=… (deflate-raw+base64url, fragment라 서버 미전송) 웹 리포트(지도 포함), 카드형 UI. 에뮬레이터 한계: 시트 위치 콘솔 조작이 VHAL에 미반영, Pleos 위치 미수신(표준 GPS로 보조, adb emu geo fix).
 - 2026-10-24: **데이터 블랙박스 v0.1 동작 확인** (android/). 상시 기록 서비스 + 충격(가속도 2.5G)·에어백으로 사고 감지 → 전30초/후10초 저장 → 리포트·그래프. 차속은 표준 Car API PERF_VEHICLE_SPEED(CAR_SPEED 런타임 권한). 에뮬레이터 차량 조작은 Virtual Console(adb forward tcp:8088, http://127.0.0.1:8088, PUT /vehicle/controls?speed_kph=, /vehicle/gear?gear=Drive, /vehicle/turn-signal?mode=BlinkLeft, brake=) — 브라우저 탭이 열려 있어야 동작. 앱 데이터는 user 10 (run-as --user 10). 에어백은 에뮬레이터 미지원.
 - 2026-10-24: Pleos 에뮬레이터 + 테스트 앱(android/, 패키지 com.shimpyo.app) 연동 확인. 빌드는 JDK 17(Temurin) 필요 — Android Studio 내장 JBR 25는 Gradle 8.10과 안 맞음. 공조 온도는 에뮬레이터에서 아직 값 없음(Virtual Console 확인 필요).

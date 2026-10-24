@@ -1,4 +1,4 @@
-package com.shimpyo.app
+package com.databox.blackbox
 
 /** 기록하는 차량 신호 종류. 값은 모두 숫자로 저장한다(용량 최소화). */
 enum class SignalKey {

@@ -1,4 +1,4 @@
-package com.shimpyo.app
+package com.databox.blackbox
 
 import android.content.Context
 import org.json.JSONArray
@@ -12,6 +12,8 @@ data class CrashEvent(
     val cause: String,          // "충격 감지" / "에어백 전개"
     val peakG: Double,
     val samples: List<Sample>,
+    val direction: ImpactDirection? = null,
+    val notes: List<String> = emptyList(), // 예: 안전벨트 미착용 좌석과 안내 이력
 )
 
 /** 사고 기록을 앱 내부 저장소에 JSON 파일로 보관한다. 차 밖으로 나가지 않음. */
@@ -27,6 +29,10 @@ class CrashStore(context: Context) {
             .put("samples", JSONArray().apply {
                 event.samples.forEach { put(JSONArray().put(it.t).put(it.key.name).put(it.value)) }
             })
+            .put("notes", JSONArray(event.notes))
+        event.direction?.let {
+            json.put("direction", JSONObject().put("label", it.label).put("f", it.forwardG).put("r", it.lateralG))
+        }
         File(dir, "${event.id}.json").writeText(json.toString())
     }
 
@@ -52,6 +58,10 @@ class CrashStore(context: Context) {
             cause = json.getString("cause"),
             peakG = json.getDouble("peakG"),
             samples = samples,
+            direction = json.optJSONObject("direction")?.let {
+                ImpactDirection(it.getString("label"), it.getDouble("f"), it.getDouble("r"))
+            },
+            notes = json.optJSONArray("notes")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList(),
         )
     }
 }

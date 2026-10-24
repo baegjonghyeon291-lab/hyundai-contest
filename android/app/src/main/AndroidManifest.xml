@@ -13,6 +13,8 @@
     <!-- 맡김 모드: 맡길 때/돌려받을 때 시트·공조 설정 비교 (읽기만) -->
     <uses-permission android:name="pleos.car.permission.CAR_SEATS" />
     <uses-permission android:name="pleos.car.permission.CAR_CLIMATE" />
+    <!-- 안전벨트 음성 안내 -->
+    <uses-permission android:name="pleos.car.permission.TTS_SERVICE" />
     <!-- 차속: 차량 표준 API (계기판과 같은 출처) -->
     <uses-permission android:name="android.car.permission.CAR_SPEED" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -21,6 +23,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:label="@string/app_name"
@@ -37,6 +40,14 @@
         <activity android:name=".ReportActivity" android:exported="false" />
         <activity android:name=".HandoverActivity" android:exported="false" />
         <activity android:name=".QrActivity" android:exported="false" />
+        <activity android:name=".TripActivity" android:exported="false" />
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
         <service
             android:name=".RecorderService"
             android:exported="false"
