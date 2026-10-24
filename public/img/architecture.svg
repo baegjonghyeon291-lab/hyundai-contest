@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="760" viewBox="0 0 1400 760" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#3b4a63"/></marker>
+  </defs>
+  <rect width="1400" height="760" fill="#ffffff"/>
+  <text x="700" y="44" text-anchor="middle" font-size="28" font-weight="700" fill="#0b1a2e">골목지킴이 아키텍처 — Pleos SDK 매핑</text>
+
+  <!-- 차량 신호 (좌) -->
+  <rect x="40" y="90" width="330" height="560" rx="16" fill="#eef3fa" stroke="#9fb3cc"/>
+  <text x="205" y="124" text-anchor="middle" font-size="20" font-weight="700" fill="#0b1a2e">차량 신호 (Pleos Connect)</text>
+  <g font-size="16" fill="#1f2d44">
+    <rect x="60" y="145" width="290" height="58" rx="10" fill="#ffffff" stroke="#c9d6e6"/>
+    <text x="75" y="169" font-weight="700">Vehicle SDK · 조회</text>
+    <text x="75" y="192">기어·브레이크·방향지시등·핸들·조명·와이퍼</text>
+    <rect x="60" y="213" width="290" height="58" rx="10" fill="#ffffff" stroke="#c9d6e6"/>
+    <text x="75" y="237" font-weight="700">Vehicle SDK · 좌석/문/안전</text>
+    <text x="75" y="260">탑승·벨트·문 열림·에어백·경고등</text>
+    <rect x="60" y="281" width="290" height="58" rx="10" fill="#ffffff" stroke="#c9d6e6"/>
+    <text x="75" y="305" font-weight="700">Car API · PERF_VEHICLE_SPEED</text>
+    <text x="75" y="328">차속 (계기판과 같은 출처)</text>
+    <rect x="60" y="349" width="290" height="58" rx="10" fill="#ffffff" stroke="#c9d6e6"/>
+    <text x="75" y="373" font-weight="700">NaviHelper SDK</text>
+    <text x="75" y="396">주의지점·남은 거리·다음 회전·제한속도</text>
+    <rect x="60" y="417" width="290" height="58" rx="10" fill="#ffffff" stroke="#c9d6e6"/>
+    <text x="75" y="441" font-weight="700">FusedLocation SDK (+GPS)</text>
+    <text x="75" y="464">위치 · 경로</text>
+    <rect x="60" y="485" width="290" height="58" rx="10" fill="#ffffff" stroke="#c9d6e6"/>
+    <text x="75" y="509" font-weight="700">가속도 센서</text>
+    <text x="75" y="532">충격 감지 · 충격 방향 (자동 보정)</text>
+  </g>
+
+  <!-- 앱 (중앙) -->
+  <rect x="470" y="90" width="460" height="560" rx="16" fill="#0b1a2e"/>
+  <text x="700" y="124" text-anchor="middle" font-size="20" font-weight="700" fill="#ffffff">골목지킴이 앱 (Kotlin · AAOS)</text>
+  <g font-size="16">
+    <rect x="490" y="145" width="420" height="92" rx="10" fill="#182a44" stroke="#3fa9f5"/>
+    <text x="505" y="170" fill="#ffffff" font-weight="700">AlleyEngine — 골목 진입 판단 · 위험 단계</text>
+    <text x="505" y="194" fill="#c9d6e6">도로 등급·제한속도 + 주의지점 + 깜빡이·핸들·회전</text>
+    <text x="505" y="218" fill="#c9d6e6">기준 30/20 · 야간·우천·등하교 · 핫스팟 · 위험 지점</text>
+    <rect x="490" y="250" width="420" height="92" rx="10" fill="#182a44" stroke="#fbbf24"/>
+    <text x="505" y="275" fill="#ffffff" font-weight="700">AlleyGuard — 안내와 제어 (벗어나면 복원)</text>
+    <text x="505" y="299" fill="#c9d6e6">음성(TTS) · 전조등/안개등 · 무드등 호박/적색</text>
+    <text x="505" y="323" fill="#c9d6e6">창문 10% · 볼륨 ½ · 실내등 · 김서림 · 하차 안내</text>
+    <rect x="490" y="355" width="420" height="92" rx="10" fill="#182a44" stroke="#f87171"/>
+    <text x="505" y="380" fill="#ffffff" font-weight="700">데이터 블랙박스 — 상시 기록 · 사고 감지</text>
+    <text x="505" y="404" fill="#c9d6e6">60초 링버퍼 → 충격 2.5G/에어백 → 전 30s·후 10s 저장</text>
+    <text x="505" y="428" fill="#c9d6e6">사고 리포트 · 맡김 모드 · 주행 일지 · 벨트 안내</text>
+    <rect x="490" y="460" width="420" height="70" rx="10" fill="#182a44" stroke="#4ade80"/>
+    <text x="505" y="485" fill="#ffffff" font-weight="700">사고 직후 대응</text>
+    <text x="505" y="509" fill="#c9d6e6">보험사·112 전화 · 위치 복사 · QR → 휴대폰 리포트</text>
+    <rect x="490" y="545" width="420" height="70" rx="10" fill="#182a44" stroke="#8a9bb4"/>
+    <text x="505" y="570" fill="#ffffff" font-weight="700">TextToSpeech SDK · 부팅 자동 시작 · 설정</text>
+    <text x="505" y="594" fill="#c9d6e6">모든 자동 제어는 사용자가 끌 수 있음</text>
+  </g>
+
+  <!-- 서버/휴대폰 (우) -->
+  <rect x="1030" y="90" width="330" height="560" rx="16" fill="#eef3fa" stroke="#9fb3cc"/>
+  <text x="1195" y="124" text-anchor="middle" font-size="20" font-weight="700" fill="#0b1a2e">서버 · 휴대폰</text>
+  <g font-size="16" fill="#1f2d44">
+    <rect x="1050" y="145" width="290" height="90" rx="10" fill="#ffffff" stroke="#c9d6e6"/>
+    <text x="1065" y="169" font-weight="700">/api/road (Vercel)</text>
+    <text x="1065" y="192">OpenStreetMap 도로 등급·제한속도</text>
+    <text x="1065" y="215">횡단보도·정류장·학교 · 55m 격자 캐시</text>
+    <rect x="1050" y="250" width="290" height="90" rx="10" fill="#ffffff" stroke="#c9d6e6"/>
+    <text x="1065" y="274" font-weight="700">/api/hotspots (Vercel)</text>
+    <text x="1065" y="297">여러 차의 급제동 지점 익명 집계</text>
+    <text x="1065" y="320">"사고 날 뻔한 곳" 지도</text>
+    <rect x="1050" y="355" width="290" height="110" rx="10" fill="#ffffff" stroke="#c9d6e6"/>
+    <text x="1065" y="379" font-weight="700">휴대폰 웹 리포트</text>
+    <text x="1065" y="402">QR 링크 안에만 데이터 (서버 미저장)</text>
+    <text x="1065" y="425">지도 · 그래프 · 공유 · PDF</text>
+    <text x="1065" y="448">보험사·경찰 제출</text>
+    <rect x="1050" y="480" width="290" height="110" rx="10" fill="#fff7e6" stroke="#fbbf24"/>
+    <text x="1065" y="504" font-weight="700">향후: Pleos ADAS API 개방 시</text>
+    <text x="1065" y="527">추적 물체·충돌 경고·DMS 입력을</text>
+    <text x="1065" y="550">AlleyEngine에 그대로 연결</text>
+    <text x="1065" y="573">(구조 변경 없음)</text>
+  </g>
+
+  <!-- 화살표 -->
+  <g stroke="#3b4a63" stroke-width="2.5" fill="none" marker-end="url(#arrow)">
+    <path d="M370,190 L470,190"/>
+    <path d="M370,378 L470,200"/>
+    <path d="M370,514 L470,400"/>
+    <path d="M930,190 L1030,190"/>
+    <path d="M1030,295 L930,215"/>
+    <path d="M930,495 L1030,400"/>
+  </g>
+  <text x="420" y="178" text-anchor="middle" font-size="13" fill="#3b4a63">콜백</text>
+  <text x="980" y="178" text-anchor="middle" font-size="13" fill="#3b4a63">HTTPS</text>
+  <text x="980" y="470" text-anchor="middle" font-size="13" fill="#3b4a63">QR</text>
+
+  <text x="700" y="705" text-anchor="middle" font-size="15" fill="#5b6b82">제동·가속 제어, 레이더·카메라, 외부음은 사용하지 않음 (앱에 개방되지 않은 영역) · 모든 기록은 차 안에 저장</text>
+</svg>
