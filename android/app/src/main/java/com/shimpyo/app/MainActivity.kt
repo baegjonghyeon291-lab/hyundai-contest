@@ -1,274 +1,152 @@
 package com.shimpyo.app
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.view.Gravity
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import ai.pleos.playground.vehicle.Vehicle
-import ai.pleos.playground.vehicle.api.model.area.SeatArea
-import ai.pleos.playground.vehicle.api.model.capability.AreaBounds
-import ai.pleos.playground.vehicle.api.model.capability.CapabilityConfig
-import ai.pleos.playground.vehicle.listener.SeatAirbagDeployedListener
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
-import kotlin.math.abs
-import kotlin.math.sqrt
-import ai.pleos.playground.vehicle.constant.area.SeatValue
-import ai.pleos.playground.vehicle.constant.area.TurnSignalValue
-import ai.pleos.playground.vehicle.constant.control.VehicleGear
-import ai.pleos.playground.vehicle.constant.unit.TemperatureUnit
-import ai.pleos.playground.vehicle.listener.GearSelectionListener
-import ai.pleos.playground.vehicle.listener.TurnSignalStateListener
 
-/**
- * 연결 확인용 테스트 화면.
- * 차량 값 읽기(주행거리·기어·방향지시등·설정 온도)와 쓰기(운전석 설정 온도)를 한 화면에서 확인한다.
- */
+/** 메인: 기록 상태(실시간 신호) + 저장된 사고 목록. */
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var vehicle: Vehicle
     private val handler = Handler(Looper.getMainLooper())
-    // 공조 구역 번호는 차종마다 달라서 capability 조회로 받아온다. 받기 전엔 운전석 기본값.
-    private var powerArea = SeatArea(SeatValue.ROW_1_LEFT)
-    private var tempArea = SeatArea(SeatValue.ROW_1_LEFT)
+    private lateinit var statusView: TextView
+    private lateinit var liveView: TextView
+    private lateinit var listBox: LinearLayout
+    private var shownCount = -1
 
-    private lateinit var distanceView: TextView
-    private lateinit var gearView: TextView
-    private lateinit var turnSignalView: TextView
-    private lateinit var tempView: TextView
-    private lateinit var airbagView: TextView
-    private lateinit var impactView: TextView
-    private lateinit var logView: TextView
-
-    private var targetTemp: Float? = null
-
-    private val gearListener = object : GearSelectionListener {
-        override fun onSelected(gear: VehicleGear?) = ui { gearView.text = "기어: ${gearLabel(gear)}" }
-        override fun onFailed(e: Exception) = log("기어 구독 실패: ${e.message}")
-    }
-
-    private val turnSignalListener = object : TurnSignalStateListener {
-        override fun onTurnSignalStateUpdated(state: TurnSignalValue?) =
-            ui { turnSignalView.text = "방향지시등: ${turnSignalLabel(state)}" }
-        override fun onFailed(e: Exception) = log("방향지시등 구독 실패: ${e.message}")
-    }
-
-    // 충돌 감지 ① 에어백 전개 신호 (좌석별)
-    private val airbagAreas = mutableListOf<SeatArea>()
-    private val airbagListener = object : SeatAirbagDeployedListener {
-        override fun onSeatAirbagDeployUpdated(deployed: Boolean?) = ui {
-            airbagView.text = "에어백: ${if (deployed == true) "💥 전개됨 — 충돌!" else "정상"}"
-            if (deployed == true) log("에어백 전개 감지 → 충돌로 판단")
+    private val tick = object : Runnable {
+        override fun run() {
+            renderLive()
+            if (Recorder.savedCount != shownCount) renderList()
+            handler.postDelayed(this, 300)
         }
-        override fun onFailed(e: Exception) = log("에어백 구독 실패: ${e.message}")
-    }
-
-    // 충돌 감지 ② 가속도 센서 충격량 (중력 1G 기준 차이)
-    private lateinit var sensorManager: SensorManager
-    private var maxImpactG = 0f
-    private val accelListener = object : SensorEventListener {
-        override fun onSensorChanged(event: SensorEvent) {
-            val (x, y, z) = event.values
-            val impactG = abs(sqrt(x * x + y * y + z * z) / SensorManager.GRAVITY_EARTH - 1f)
-            if (impactG > maxImpactG) maxImpactG = impactG
-            val hit = impactG >= IMPACT_THRESHOLD_G
-            ui {
-                impactView.text = "충격: %.2f G (최대 %.2f G)%s".format(impactG, maxImpactG, if (hit) "  💥 충돌 감지!" else "")
-            }
-            if (hit) log("충격 %.1fG 감지 → 충돌로 판단".format(impactG))
-        }
-        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(buildLayout())
+        requestPermissionsThenStart()
+    }
 
-        vehicle = Vehicle(this)
-        vehicle.initialize()
-        log("차량 서비스 연결 중…")
+    override fun onResume() {
+        super.onResume()
+        renderList()
+        handler.post(tick)
+    }
 
-        // initialize()는 비동기로 연결되므로 잠시 후 첫 조회와 구독을 시작한다.
-        handler.postDelayed({
-            loadHvacAreas()
-            refresh()
-            vehicle.getGear().registerGearSelection(gearListener)
-            vehicle.getTurnSignal().registerTurnSignalState(turnSignalListener)
-            watchAirbags()
-        }, 1500)
+    override fun onPause() {
+        handler.removeCallbacks(tick)
+        super.onPause()
+    }
 
-        sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
-        val accel = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        if (accel == null) {
-            impactView.text = "충격: 가속도 센서 없음"
-        } else {
-            sensorManager.registerListener(accelListener, accel, SensorManager.SENSOR_DELAY_GAME)
+    private fun requestPermissionsThenStart() {
+        val needed = listOf(
+            "android.car.permission.CAR_SPEED",
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.POST_NOTIFICATIONS,
+        ).filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+        if (needed.isEmpty()) startRecorder() else requestPermissions(needed.toTypedArray(), 1)
+    }
+
+    override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, results: IntArray) {
+        super.onRequestPermissionsResult(code, perms, results)
+        // 일부가 거부돼도 가능한 신호로 기록은 시작한다
+        startRecorder()
+    }
+
+    private fun startRecorder() {
+        if (!Recorder.running) startForegroundService(Intent(this, RecorderService::class.java))
+    }
+
+    private fun renderLive() {
+        val b = Recorder.buffer
+        val pending = Recorder.pending
+        statusView.text = when {
+            pending != null -> "🔴 사고 감지 — 충돌 후 상황 기록 중…"
+            Recorder.running -> "● 기록 중"
+            else -> "○ 기록 꺼짐"
+        }
+        statusView.setTextColor(if (pending != null) Color.parseColor("#FF5252") else Color.parseColor("#66BB6A"))
+
+        val turn = when (b.latest(SignalKey.TURN_SIGNAL)?.toInt()) { 1 -> "◀ 왼쪽"; 2 -> "오른쪽 ▶"; else -> "꺼짐" }
+        liveView.text = listOf(
+            "속도  " + (b.latest(SignalKey.SPEED_KPH)?.let { "%.1f km/h".format(it) } ?: "-"),
+            "기어  " + CrashReport.gearLabel(b.latest(SignalKey.GEAR)?.toInt()),
+            "깜빡이  $turn",
+            "브레이크  " + if (b.latest(SignalKey.BRAKE) == 1.0) "밟음" else "-",
+            "전조등  " + if (b.latest(SignalKey.LOW_BEAM) == 1.0) "켜짐" else "꺼짐",
+            "충격  %.2f G  (사고 기준 %.1f G)".format(Recorder.liveImpactG, RecorderService.IMPACT_THRESHOLD_G),
+        ).joinToString("\n")
+    }
+
+    private fun renderList() {
+        shownCount = Recorder.savedCount
+        listBox.removeAllViews()
+        val events = CrashStore(this).list()
+        if (events.isEmpty()) {
+            listBox.addView(text("저장된 사고 기록이 없습니다.", 28f, Color.GRAY))
+            return
+        }
+        events.forEach { e ->
+            val r = CrashReport(e)
+            listBox.addView(Button(this).apply {
+                text = "${r.crashTimeText}   ${e.cause} %.1fG   %s".format(
+                    e.peakG, r.speedAtCrash?.let { "%.0f km/h".format(it) } ?: "",
+                )
+                textSize = 26f
+                isAllCaps = false
+                setOnClickListener {
+                    startActivity(Intent(this@MainActivity, ReportActivity::class.java).putExtra("id", e.id))
+                }
+            })
         }
     }
 
-    override fun onDestroy() {
-        sensorManager.unregisterListener(accelListener)
-        airbagAreas.forEach { vehicle.getSafety().unregisterSeatAirbagDeployed(it, airbagListener) }
-        vehicle.getGear().unregisterGearSelection(gearListener)
-        vehicle.getTurnSignal().unregisterTurnSignalState(turnSignalListener)
-        vehicle.release()
-        super.onDestroy()
-    }
+    private fun buildLayout(): ScrollView {
+        statusView = text("", 36f, Color.WHITE)
+        liveView = text("", 30f, Color.WHITE).apply { setLineSpacing(8f, 1f) }
+        listBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
-    private fun watchAirbags() {
-        vehicle.getSafety().checkAirbagDeployedCapabilities(
-            { _: CapabilityConfig, areas: List<SeatArea> ->
-                airbagAreas += areas
-                areas.forEach { vehicle.getSafety().registerSeatAirbagDeployed(it, airbagListener) }
-                ui { airbagView.text = "에어백: 감시 중 (${areas.size}개 좌석)" }
-            },
-            { e -> log("에어백 지원 확인 실패: ${e.message}") },
-        )
-    }
-
-    private fun loadHvacAreas() {
-        vehicle.getHVAC().checkHvacPowerCapabilities(
-            { areas: List<SeatArea> ->
-                areas.firstOrNull()?.let { powerArea = it }
-                log("에어컨 전원 지원 구역: ${areas.size}개")
-            },
-            { e -> log("에어컨 전원 지원 확인 실패: ${e.message}") },
-        )
-        vehicle.getHVAC().checkHvacTemperatureCapabilities(
-            { bounds: Map<SeatArea, AreaBounds<Float>> ->
-                bounds.keys.firstOrNull()?.let { tempArea = it }
-                bounds.values.firstOrNull()?.let { log("온도 범위: ${it.minValue} ~ ${it.maxValue} ℃") }
-                handler.post { refresh() }
-            },
-            { e -> log("온도 지원 확인 실패: ${e.message}") },
-        )
-    }
-
-    private fun refresh() {
-        vehicle.getOdometer().getCurrentDistanceDriven(
-            { km -> ui { distanceView.text = "총 주행거리: %.1f km".format(km) } },
-            { e -> log("주행거리 조회 실패: ${e.message}") },
-        )
-        vehicle.getGear().getCurrentGearSelectionState(
-            { gear -> ui { gearView.text = "기어: ${gearLabel(gear)}" } },
-            { e -> log("기어 조회 실패: ${e.message}") },
-        )
-        vehicle.getTurnSignal().getCurrentTurnSignalState(
-            { state -> ui { turnSignalView.text = "방향지시등: ${turnSignalLabel(state)}" } },
-            { e -> log("방향지시등 조회 실패: ${e.message}") },
-        )
-        vehicle.getHVAC().getHvacTemperature(
-            tempArea, TemperatureUnit.CELSIUS,
-            { temp ->
-                targetTemp = temp
-                ui { tempView.text = "운전석 설정 온도: %.1f ℃".format(temp) }
-            },
-            { e -> log("온도 조회 실패: ${e.message}") },
-        )
-        log("차량 값 조회 요청 완료")
-    }
-
-    private fun powerOnHvac() {
-        vehicle.getHVAC().setHvacPower(
-            powerArea, true,
-            { _, _ ->
-                log("에어컨 켜기 요청 완료")
-                handler.postDelayed({ refresh() }, 800)
-            },
-            { e -> log("에어컨 켜기 실패: ${e.message}") },
-        )
-    }
-
-    private fun changeTemp(delta: Float) {
-        val current = targetTemp ?: return log("현재 온도를 아직 못 읽었어요")
-        val next = current + delta
-        vehicle.getHVAC().setHvacTemperature(
-            tempArea, next, TemperatureUnit.CELSIUS,
-            { _, _ ->
-                log("온도 변경 요청: %.1f ℃".format(next))
-                // 변경 요청 완료 ≠ 실제 반영. 다시 읽어서 확인한다.
-                handler.postDelayed({ refresh() }, 500)
-            },
-            { e -> log("온도 변경 실패: ${e.message}") },
-        )
-    }
-
-    private fun buildLayout(): LinearLayout {
-        fun label(size: Float) = TextView(this).apply {
-            textSize = size
-            setTextColor(Color.WHITE)
-            setPadding(0, 12, 0, 12)
-        }
-        fun button(text: String, onClick: () -> Unit) = Button(this).apply {
-            this.text = text
-            textSize = 26f
-            setOnClickListener { onClick() }
-        }
-
-        distanceView = label(34f).apply { text = "총 주행거리: -" }
-        gearView = label(34f).apply { text = "기어: -" }
-        turnSignalView = label(34f).apply { text = "방향지시등: -" }
-        tempView = label(34f).apply { text = "운전석 설정 온도: -" }
-        airbagView = label(34f).apply { text = "에어백: -" }
-        impactView = label(34f).apply { text = "충격: -" }
-        logView = label(20f).apply { setTextColor(Color.LTGRAY) }
-
-        val buttons = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            addView(button("에어컨 켜기") { powerOnHvac() })
-            addView(button("온도 −1℃") { changeTemp(-1f) })
-            addView(button("온도 +1℃") { changeTemp(1f) })
-            addView(button("새로고침") { refresh() })
-        }
-
-        return LinearLayout(this).apply {
+        val left = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.TOP
-            setBackgroundColor(Color.parseColor("#0B1A2E"))
-            setPadding(80, 60, 80, 60)
-            addView(label(48f).apply { text = "안녕하세요, 쉼표 테스트 앱입니다" })
-            addView(distanceView)
-            addView(gearView)
-            addView(turnSignalView)
-            addView(tempView)
-            addView(airbagView)
-            addView(impactView)
-            addView(buttons)
-            addView(logView)
+            addView(text("실시간 차량 상태", 28f, Color.LTGRAY))
+            addView(liveView)
         }
+        val right = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(60, 0, 0, 0)
+            addView(text("사고 기록", 28f, Color.LTGRAY))
+            addView(listBox)
+        }
+        val columns = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(left, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            addView(right, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.4f))
+        }
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#0B1A2E"))
+            setPadding(70, 50, 70, 50)
+            addView(text("데이터 블랙박스", 46f, Color.WHITE))
+            addView(text("영상이 못 남기는 내 차의 순간을 숫자로 남깁니다", 24f, Color.GRAY))
+            addView(statusView)
+            addView(columns)
+        }
+        return ScrollView(this).apply { setBackgroundColor(Color.parseColor("#0B1A2E")); addView(root) }
     }
 
-    private fun gearLabel(gear: VehicleGear?) = when (gear) {
-        VehicleGear.GEAR_PARK -> "P (주차)"
-        VehicleGear.GEAR_REVERSE -> "R (후진)"
-        VehicleGear.GEAR_NEUTRAL -> "N (중립)"
-        VehicleGear.GEAR_DRIVE -> "D (주행)"
-        null -> "알 수 없음"
-        else -> gear.name
-    }
-
-    private fun turnSignalLabel(state: TurnSignalValue?) = when (state) {
-        TurnSignalValue.LEFT -> "왼쪽 ◀"
-        TurnSignalValue.RIGHT -> "오른쪽 ▶"
-        TurnSignalValue.OFF -> "꺼짐"
-        null -> "알 수 없음"
-    }
-
-    private fun ui(block: () -> Unit) = runOnUiThread(block)
-
-    companion object {
-        // 일반 주행·과속방지턱은 1G 미만, 경미한 접촉사고도 보통 2~4G 이상
-        private const val IMPACT_THRESHOLD_G = 2.5f
-    }
-
-    private fun log(message: String) = ui {
-        logView.text = (message + "\n" + logView.text).lines().take(6).joinToString("\n")
+    private fun text(value: String, size: Float, color: Int) = TextView(this).apply {
+        text = value
+        textSize = size
+        setTextColor(color)
+        setPadding(0, 10, 0, 10)
     }
 }
