@@ -25,6 +25,7 @@
 - 수상작은 실제 차량 출시 검토 → 실현 가능성·Pleos API 활용도가 중요
 
 ## 진행 상황 / 결정 사항
+- 2026-10-24: **메인 확정: 골목지킴이**(골목 보행자 돌발 진입 예방) + 보조 데이터 블랙박스. 전체 할 일·우선순위는 **docs/roadmap.md** (1단계 11/15, 2단계 12/3). 불가 기능 목록도 거기에 — 다시 검토하지 말 것.
 - (주제, 핵심 기능, 결정한 내용을 여기에 계속 기록 — 두 PC의 Claude가 이 파일로 맥락을 공유함)
 - 2026-10-24: **데이터 블랙박스 v1.0 (후보 기능 완료)** — 패키지 com.databox.blackbox. 부팅 자동 시작(BootReceiver+START_STICKY), 충격 방향 자동 보정(MountCalibration), 주행 일지 30일(trips/*.json.gz), 안전벨트 음성 안내(Pleos TTS ON_DEVICE)+기록, release APK(apk/), 제출용 README. 남은 것: APK 파일명에 성명 넣기(팀명_앱이름_release.apk 규정).
 - 2026-10-24: **데이터 블랙박스 v0.2** — 맡김 모드(발레/정비/대리/가족: 거리·최고속도·급제동/급가속·바뀐 설정·경로, 의심 사유 판단), QR → https://hyundai-contest.vercel.app/#r=… (deflate-raw+base64url, fragment라 서버 미전송) 웹 리포트(지도 포함), 카드형 UI. 에뮬레이터 한계: 시트 위치 콘솔 조작이 VHAL에 미반영, Pleos 위치 미수신(표준 GPS로 보조, adb emu geo fix).
