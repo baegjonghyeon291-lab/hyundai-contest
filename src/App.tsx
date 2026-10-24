@@ -86,7 +86,8 @@ function CrashView({ p }: { p: CrashPayload }) {
 function SpeedChart({ p }: { p: CrashPayload }) {
   const W = 640, H = 260, top = 16, bottom = 190
   const max = Math.max(20, Math.ceil(Math.max(...p.sp) / 20) * 20)
-  const x = (ds: number) => ((ds + 300) / 400) * W // -30초~+10초 → 0~W (0.1초 단위)
+  const padX = 24
+  const x = (ds: number) => padX + ((ds + 300) / 400) * (W - padX * 2) // -30초~+10초, 0.1초 단위
   const y = (v: number) => bottom - ((bottom - top) * v) / max
   const line = p.sp.map((v, i) => `${i === 0 ? 'M' : 'L'}${x(-300 + i * 5).toFixed(1)},${y(v).toFixed(1)}`).join(' ')
   const band = (items: CrashPayload['br'], y0: number, cls: string) =>
@@ -104,8 +105,8 @@ function SpeedChart({ p }: { p: CrashPayload }) {
       {[-30, -20, -10, 0, 10].map((s) => (
         <text key={s} x={x(s * 10)} y={H - 4} className="tick" textAnchor="middle">{s === 0 ? '충돌' : `${s}초`}</text>
       ))}
-      <text x={W - 4} y={bottom + 22} className="tick" textAnchor="end">브레이크</text>
-      <text x={W - 4} y={bottom + 42} className="tick" textAnchor="end">깜빡이</text>
+      <text x={padX} y={bottom + 22} className="tick">브레이크</text>
+      <text x={padX} y={bottom + 42} className="tick">깜빡이</text>
     </svg>
   )
 }

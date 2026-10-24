@@ -27,6 +27,7 @@ import ai.pleos.playground.vehicle.api.model.area.WindowArea
 import ai.pleos.playground.vehicle.api.model.capability.AreaBounds
 import ai.pleos.playground.vehicle.api.model.capability.CapabilityConfig
 import ai.pleos.playground.vehicle.constant.unit.TemperatureUnit
+import ai.pleos.playground.vehicle.constant.area.SeatValue
 import ai.pleos.playground.vehicle.constant.area.TurnSignalValue
 import ai.pleos.playground.vehicle.constant.area.WindowValue
 import ai.pleos.playground.vehicle.constant.control.LightState
@@ -186,7 +187,11 @@ class RecorderService : Service() {
             { e -> warn("에어백 미지원: ${e.message}") },
         )
         vehicle.getSeat().checkSeatForeAftPositionCapabilities(
-            { _: CapabilityConfig, bounds: Map<SeatArea, AreaBounds<Int>> -> seatArea = bounds.keys.firstOrNull() },
+            { _: CapabilityConfig, bounds: Map<SeatArea, AreaBounds<Int>> ->
+                // 운전석이 포함된 구역을 우선 사용
+                seatArea = bounds.keys.firstOrNull { SeatValue.ROW_1_LEFT in it.values } ?: bounds.keys.firstOrNull()
+                Log.i(TAG, "시트 구역: " + bounds.keys.joinToString { a -> a.values.joinToString("+") })
+            },
             { e -> warn("시트 위치 미지원: ${e.message}") },
         )
         vehicle.getHVAC().checkHvacTemperatureCapabilities(
@@ -216,13 +221,13 @@ class RecorderService : Service() {
     private fun readSettings(done: (CarSettings) -> Unit) {
         var s = CarSettings()
         var finished = false
-        val finish = Runnable { if (!finished) { finished = true; done(s) } }
+        val finish = Runnable { if (!finished) { finished = true; Log.i(TAG, "설정 스냅샷: $s (시트 구역 $seatArea)"); done(s) } }
         var remaining = 4
         fun got(update: (CarSettings) -> CarSettings) = handler.post {
             s = update(s)
             if (--remaining == 0) finish.run()
         }
-        val skip: (Exception) -> Unit = { got { it } }
+        val skip: (Exception) -> Unit = { e -> Log.w(TAG, "설정 읽기 실패: ${e.message}"); got { it } }
         val seat = seatArea
         if (seat == null) repeat(3) { got { it } } else {
             vehicle.getSeat().getCurrentSeatForeAftPosition(seat, { v -> got { it.copy(seatForeAft = v) } }, skip)

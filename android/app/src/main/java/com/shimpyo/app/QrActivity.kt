@@ -36,8 +36,8 @@ class QrActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setBackgroundColor(Palette.bg)
             setPadding(80, 60, 80, 60)
-            addView(qr, LinearLayout.LayoutParams(760, 760))
-            addView(text)
+            addView(qr, LinearLayout.LayoutParams(640, 640))
+            addView(text, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         }
         setContentView(root)
     }
