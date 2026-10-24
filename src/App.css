@@ -41,6 +41,7 @@
 .small { font-size: 13px; }
 .muted a { color: var(--accent); }
 .goodText { color: var(--good); font-weight: 600; }
+.reasons { margin: 6px 0 0; padding-left: 20px; color: var(--warn); line-height: 1.6; }
 .warnText { color: var(--warn); font-weight: 600; }
 
 .facts { list-style: none; margin: 0; padding: 0; }

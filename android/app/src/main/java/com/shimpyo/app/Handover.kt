@@ -48,13 +48,22 @@ data class HandoverRecord(
         diff("에어컨 온도", before.hvacTempC, after.hvacTempC) { "%.1f℃".format(it) }
     }
 
-    /** 맡긴 용도에 비해 주행 거리가 의심스러운지. */
-    val suspiciousDistance: Boolean
-        get() = when (mode) {
-            HandoverMode.VALET -> distanceKm > 2.0
-            HandoverMode.SERVICE -> distanceKm > 5.0
-            else -> false
+    /**
+     * 맡긴 용도에 비해 이상한 운행 사유. 발레는 주차장 이동, 정비는 짧은 시운전 정도가 정상.
+     * 대리·가족은 운전 자체가 목적이라 거리는 보지 않고 운전 습관만 본다.
+     */
+    fun suspicionReasons(): List<String> = buildList {
+        val (maxKm, maxKph) = when (mode) {
+            HandoverMode.VALET -> 1.0 to 30.0
+            HandoverMode.SERVICE -> 5.0 to 60.0
+            HandoverMode.DRIVER, HandoverMode.FAMILY -> null to 110.0
         }
+        if (maxKm != null && distanceKm > maxKm) add("${mode.label}치고 이동 거리가 깁니다 (%.1f km)".format(distanceKm))
+        if (maxSpeedKph > maxKph) add("최고 속도 %.0f km/h".format(maxSpeedKph))
+        if (hardBrakes + hardAccels >= 3) add("급제동 ${hardBrakes}회 · 급가속 ${hardAccels}회")
+    }
+
+    val suspiciousDistance: Boolean get() = suspicionReasons().isNotEmpty()
 }
 
 /**

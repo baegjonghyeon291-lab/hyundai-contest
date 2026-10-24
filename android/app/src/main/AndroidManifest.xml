@@ -10,6 +10,9 @@
     <uses-permission android:name="pleos.car.permission.CAR_SAFETY" />
     <uses-permission android:name="pleos.car.permission.CAR_INFO" />
     <uses-permission android:name="pleos.car.permission.FUSED_LOCATION" />
+    <!-- 맡김 모드: 맡길 때/돌려받을 때 시트·공조 설정 비교 (읽기만) -->
+    <uses-permission android:name="pleos.car.permission.CAR_SEATS" />
+    <uses-permission android:name="pleos.car.permission.CAR_CLIMATE" />
     <!-- 차속: 차량 표준 API (계기판과 같은 출처) -->
     <uses-permission android:name="android.car.permission.CAR_SPEED" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />

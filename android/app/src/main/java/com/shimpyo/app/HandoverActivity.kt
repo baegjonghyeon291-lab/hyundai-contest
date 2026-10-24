@@ -36,8 +36,9 @@ class HandoverActivity : AppCompatActivity() {
             gap = 16, weights = false,
         )
 
-        val verdict = if (r.suspiciousDistance)
-            label("⚠️ ${r.mode.label}치고 이동 거리가 깁니다 (%.1f km). 맡긴 동안 운행됐을 수 있어요.".format(r.distanceKm), 26f, Palette.warn, bold = true)
+        val reasons = r.suspicionReasons()
+        val verdict = if (reasons.isNotEmpty())
+            label("⚠️ 맡긴 동안 의심스러운 운행이 있었습니다\n· " + reasons.joinToString("\n· "), 26f, Palette.warn, bold = true)
         else label("✓ 맡긴 동안 특이한 운행은 없었습니다.", 26f, Palette.good, bold = true)
 
         val changes = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -56,7 +57,7 @@ class HandoverActivity : AppCompatActivity() {
             row(
                 tile("주행 거리", value("%.1f km".format(r.distanceKm), r.suspiciousDistance)),
                 tile("맡긴 시간", value("%.0f분".format(r.durationMin))),
-                tile("최고 속도", value("%.0f km/h".format(r.maxSpeedKph), r.maxSpeedKph > 80)),
+                tile("최고 속도", value("%.0f km/h".format(r.maxSpeedKph), reasons.any { it.startsWith("최고 속도") })),
             ),
             LinearLayout(this).apply { space(16) },
             row(

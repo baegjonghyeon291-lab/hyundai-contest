@@ -118,14 +118,17 @@ function HandoverView({ p }: { p: HandoverPayload }) {
       <section className={`card hero ${p.sus ? 'warn' : 'good'}`}>
         <p className="eyebrow">맡김 리포트 · {p.m}</p>
         <h1>{formatTime(p.s)} ~</h1>
-        <p className={p.sus ? 'warnText' : 'goodText'}>
-          {p.sus ? `⚠️ ${p.m}치고 이동 거리가 깁니다. 맡긴 동안 운행됐을 수 있어요.` : '✓ 맡긴 동안 특이한 운행은 없었습니다.'}
-        </p>
+        {p.sus ? (
+          <>
+            <p className="warnText">⚠️ 맡긴 동안 의심스러운 운행이 있었습니다</p>
+            <ul className="reasons">{(p.why ?? []).map((w) => <li key={w}>{w}</li>)}</ul>
+          </>
+        ) : <p className="goodText">✓ 맡긴 동안 특이한 운행은 없었습니다.</p>}
       </section>
       <section className="tiles">
         <Tile title="주행 거리" value={`${p.d.toFixed(1)} km`} warn={p.sus} />
         <Tile title="맡긴 시간" value={`${minutes}분`} />
-        <Tile title="최고 속도" value={`${Math.round(p.mx)} km/h`} warn={p.mx > 80} />
+        <Tile title="최고 속도" value={`${Math.round(p.mx)} km/h`} warn={(p.why ?? []).some((w) => w.startsWith('최고 속도'))} />
         <Tile title="급제동" value={`${p.hb}회`} warn={p.hb > 0} />
         <Tile title="급가속" value={`${p.ha}회`} warn={p.ha > 0} />
         <Tile title="바뀐 설정" value={`${p.ch.length}개`} warn={p.ch.length > 0} />

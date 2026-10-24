@@ -27,6 +27,7 @@ export interface HandoverPayload {
   hb: number
   ha: number
   sus: boolean
+  why?: string[]
   ch: [string, string][]
   path: [number, number][]
 }

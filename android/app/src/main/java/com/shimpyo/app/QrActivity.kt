@@ -12,6 +12,7 @@ class QrActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val url = intent.getStringExtra("url") ?: return finish()
+        android.util.Log.i("DataBlackBox", "share url (${url.length}자): $url")
 
         val qr = ImageView(this).apply {
             setImageBitmap(Share.qr(url))

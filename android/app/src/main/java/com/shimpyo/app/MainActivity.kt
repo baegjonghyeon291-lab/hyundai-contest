@@ -121,9 +121,12 @@ class MainActivity : AppCompatActivity() {
         if (h == null) {
             handoverBox.addView(label("차를 남에게 맡길 때 켜 두세요", 22f, Palette.sub))
             handoverBox.space(16)
-            handoverBox.addView(row(*HandoverMode.entries.map { mode ->
-                ghostButton("${mode.icon} ${mode.label}") { Recorder.service?.startHandover(mode) }
-            }.toTypedArray(), gap = 14))
+            HandoverMode.entries.chunked(2).forEachIndexed { i, pair ->
+                if (i > 0) handoverBox.space(14)
+                handoverBox.addView(row(*pair.map { mode ->
+                    ghostButton("${mode.icon} ${mode.label}") { Recorder.service?.startHandover(mode) }
+                }.toTypedArray(), gap = 14))
+            }
         } else {
             handoverTitle = label("", 28f, Palette.warn, bold = true)
             handoverStats = label("", 24f, Palette.text)

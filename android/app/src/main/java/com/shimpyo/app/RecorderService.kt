@@ -101,6 +101,7 @@ class RecorderService : Service() {
             vehicle.getSteeringWheel().unregisterSteeringWheelAngle(steeringListener)
             airbagAreas.forEach { vehicle.getSafety().unregisterSeatAirbagDeployed(it, airbagListener) }
             location.unregisterFusedLocationCallback(locationListener)
+            getSystemService(android.location.LocationManager::class.java).removeUpdates(gpsListener)
         }
         vehicle.release()
         location.release()
@@ -247,9 +248,20 @@ class RecorderService : Service() {
         override fun onError(e: Exception) = warn("위치: ${e.message}")
     }
 
+    // Pleos 위치가 안 들어오는 환경(에뮬레이터 등)을 위해 표준 GPS도 함께 받는다
+    private val gpsListener = android.location.LocationListener { loc ->
+        buffer.add(SignalKey.LAT, loc.latitude)
+        buffer.add(SignalKey.LON, loc.longitude)
+        Recorder.handover?.onLocation(loc.latitude, loc.longitude)
+    }
+
     private fun subscribeLocation() {
         if (location.isSupported()) location.registerFusedLocationCallback(locationListener)
-        else warn("위치 서비스 미지원")
+        else warn("Pleos 위치 서비스 미지원")
+        val lm = getSystemService(android.location.LocationManager::class.java)
+        if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            lm.requestLocationUpdates(android.location.LocationManager.GPS_PROVIDER, 1_000L, 0f, gpsListener, Looper.getMainLooper())
+        } else warn("위치 권한 없음")
     }
 
     // ── 충격 감지: 가속도 센서 ──────────────────────────────────────────────

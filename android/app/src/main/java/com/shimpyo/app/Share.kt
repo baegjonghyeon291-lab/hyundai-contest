@@ -46,6 +46,7 @@ object Share {
             .put("k", "h").put("m", r.mode.label).put("s", r.start).put("e", r.end)
             .put("d", round1(r.distanceKm * 10) / 10).put("mx", round1(r.maxSpeedKph))
             .put("hb", r.hardBrakes).put("ha", r.hardAccels).put("sus", r.suspiciousDistance)
+            .put("why", JSONArray(r.suspicionReasons()))
             .put("ch", JSONArray().apply { r.changes().forEach { (k, v) -> put(JSONArray().put(k).put(v)) } })
             .put("path", pathJson(r.path, maxPath))
         return fit { json(it) }
