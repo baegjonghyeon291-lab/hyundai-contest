@@ -93,6 +93,22 @@ class CrashReport(val event: CrashEvent) {
         steeringAtCrash?.let { add(Triple("핸들 각도", "%.0f° %s".format(kotlin.math.abs(it), if (it < 0) "왼쪽" else if (it > 0) "오른쪽" else ""), null)) }
         add(Triple("위치", if (lat != null && lon != null) "%.5f, %.5f".format(lat, lon) else "기록 없음", null))
         event.notes.forEach { add(Triple("안전벨트", it, it.contains("안내함"))) }
+
+        // 골목지킴이 기록: 골목에서 기준 속도를 지켰는지, 안내를 받았는지
+        val alleyAtCrash = valueAt(SignalKey.ALLEY, crash) == 1.0
+        val target = valueAt(SignalKey.ALLEY_TARGET, crash)
+        val warnedAt = series(SignalKey.ALLEY_WARNED).lastOrNull { it.t <= crash && it.t >= crash - 120_000 }?.t
+        val leftAlleyAt = series(SignalKey.ALLEY).lastOrNull { it.t <= crash && it.value == 1.0 }?.t
+        when {
+            alleyAtCrash && target != null && speedAtCrash != null -> add(Triple(
+                "골목 모드",
+                "기준 %.0f km/h · 충돌 시 %.1f km/h → %s".format(target, speedAtCrash, if (speedAtCrash <= target + 0.5) "준수" else "초과"),
+                speedAtCrash <= target + 0.5,
+            ))
+            leftAlleyAt != null && crash - leftAlleyAt <= 30_000 -> add(Triple("골목 모드", "충돌 %.0f초 전 골목 벗어남".format(secondsBefore(leftAlleyAt)), null))
+        }
+        warnedAt?.let { add(Triple("골목 안내", "충돌 %.0f초 전 음성 안내 수신 (서행 경고)".format(secondsBefore(it)), true)) }
+        if (valueAt(SignalKey.AUTO_LIGHTS, crash) == 1.0) add(Triple("자동 점등", "골목 진입 시 전조등·안개등 자동 점등 상태", true))
     }
 
     companion object {

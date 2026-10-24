@@ -4,7 +4,6 @@ import android.util.Log
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
-import java.net.URLEncoder
 import java.util.concurrent.Executors
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -14,7 +13,7 @@ import kotlin.math.sqrt
 /** 지도에서 찾은 '구조적 위험 지점'. 실시간 장애물이 아니라 사람이 튀어나올 확률이 높은 고정 지점이다. */
 data class MapHazard(val kind: String, val label: String, val lat: Double, val lon: Double)
 
-/** 현재 위치 주변 도로 정보 (OpenStreetMap). */
+/** 현재 위치 주변 도로 정보 (OpenStreetMap, 서버 캐시 경유). */
 data class RoadContext(
     val roadClass: String?,       // residential, living_street, service, tertiary, secondary, primary …
     val roadName: String?,
@@ -27,21 +26,23 @@ data class RoadContext(
 }
 
 /**
- * OpenStreetMap Overpass 조회. 내비가 꺼져 있어도 도로 등급·제한속도·횡단보도·정류장·학교를 알 수 있다.
- * 같은 50m 격자는 다시 묻지 않고, 전체 요청은 4초에 1번으로 제한한다.
+ * 도로 정보 조회. 차 안에서 외부 지도 서버를 직접 치지 않고 우리 서버(/api/road)를 거친다.
+ * 서버가 Overpass 미러 여러 곳을 시도하고 55m 격자로 캐시하므로 응답이 빠르고 끊김이 적다.
+ * 같은 격자는 다시 묻지 않고, 전체 요청은 3초에 1번으로 제한한다.
  */
 object Osm {
     private const val TAG = "DataBlackBox"
-    private const val ENDPOINT = "https://overpass-api.de/api/interpreter"
-    private const val MIN_INTERVAL_MS = 4_000L
+    private const val ENDPOINT = "https://hyundai-contest.vercel.app/api/road"
+    private const val MIN_INTERVAL_MS = 3_000L
     private val executor = Executors.newSingleThreadExecutor()
     private val cache = HashMap<String, RoadContext>()
     @Volatile private var lastRequestAt = 0L
     @Volatile private var inFlight = false
+    @Volatile var lastError: String? = null; private set
 
     /** 캐시에 있으면 즉시, 없으면 백그라운드로 받아 [onResult]를 부른다. */
     fun lookup(lat: Double, lon: Double, onResult: (RoadContext) -> Unit) {
-        val key = "%.4f,%.4f".format(Math.round(lat * 2000) / 2000.0, Math.round(lon * 2000) / 2000.0) // ≈50m 격자
+        val key = "${Math.round(lat * 2000)}_${Math.round(lon * 2000)}" // ≈55m 격자 (서버와 동일)
         cache[key]?.let { onResult(it); return }
         val now = System.currentTimeMillis()
         if (inFlight || now - lastRequestAt < MIN_INTERVAL_MS) return
@@ -51,9 +52,11 @@ object Osm {
             try {
                 val ctx = fetch(lat, lon)
                 cache[key] = ctx
+                lastError = null
                 onResult(ctx)
             } catch (e: Exception) {
-                Log.w(TAG, "OSM 조회 실패: ${e.message}")
+                lastError = e.message
+                Log.w(TAG, "도로 정보 조회 실패: ${e.message}")
             } finally {
                 inFlight = false
             }
@@ -61,56 +64,22 @@ object Osm {
     }
 
     private fun fetch(lat: Double, lon: Double): RoadContext {
-        val q = """
-            [out:json][timeout:20];
-            (
-              way(around:14,$lat,$lon)[highway][highway!~"footway|path|steps|cycleway"];
-              node(around:70,$lat,$lon)[highway=crossing];
-              node(around:120,$lat,$lon)[highway=bus_stop];
-              way(around:180,$lat,$lon)[amenity~"school|kindergarten|childcare"];
-              node(around:180,$lat,$lon)[amenity~"school|kindergarten|childcare"];
-            );
-            out tags center;
-        """.trimIndent()
-        val conn = URL(ENDPOINT).openConnection() as HttpURLConnection
-        conn.requestMethod = "POST"
-        conn.connectTimeout = 8_000
-        conn.readTimeout = 20_000
-        conn.doOutput = true
-        conn.setRequestProperty("User-Agent", "golmok-guard-prototype/0.1")
-        conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
-        conn.outputStream.use { it.write(("data=" + URLEncoder.encode(q, "UTF-8")).toByteArray()) }
-        val body = conn.inputStream.bufferedReader().readText()
-        val elements = JSONObject(body).getJSONArray("elements")
-
-        val roadRank = listOf("living_street", "pedestrian", "service", "residential", "unclassified", "tertiary", "secondary", "primary", "trunk", "motorway")
-        var bestRoad: JSONObject? = null
-        val hazards = ArrayList<MapHazard>()
-        for (i in 0 until elements.length()) {
-            val e = elements.getJSONObject(i)
-            val tags = e.optJSONObject("tags") ?: continue
-            val hw = tags.optString("highway")
-            val amenity = tags.optString("amenity")
-            val (plat, plon) = when {
-                e.has("lat") -> e.getDouble("lat") to e.getDouble("lon")
-                e.has("center") -> e.getJSONObject("center").let { it.getDouble("lat") to it.getDouble("lon") }
-                else -> 0.0 to 0.0
-            }
-            when {
-                e.getString("type") == "way" && hw.isNotEmpty() && amenity.isEmpty() -> {
-                    // 가장 '골목다운' 등급을 현재 도로로 본다 (큰길 옆 골목 진입 시 골목이 우선)
-                    if (bestRoad == null || roadRank.indexOf(hw) < roadRank.indexOf(bestRoad!!.optString("highway"))) bestRoad = tags
-                }
-                hw == "crossing" -> hazards += MapHazard("crossing", "횡단보도", plat, plon)
-                hw == "bus_stop" -> hazards += MapHazard("bus_stop", "버스정류장" + tags.optString("name").let { if (it.isEmpty()) "" else " ($it)" }, plat, plon)
-                amenity.isNotEmpty() -> hazards += MapHazard("school", when (amenity) { "school" -> "학교"; "kindergarten" -> "유치원"; else -> "어린이집" } + tags.optString("name").let { if (it.isEmpty()) "" else " ($it)" }, plat, plon)
-            }
+        val conn = (URL("$ENDPOINT?lat=$lat&lon=$lon").openConnection() as HttpURLConnection).apply {
+            connectTimeout = 8_000
+            readTimeout = 20_000
+            setRequestProperty("User-Agent", "golmok-guard-car/0.1")
         }
-        val maxspeed = bestRoad?.optString("maxspeed")?.filter { it.isDigit() }?.toIntOrNull()
+        if (conn.responseCode != 200) throw IllegalStateException("HTTP ${conn.responseCode}")
+        val j = JSONObject(conn.inputStream.bufferedReader().readText())
+        val hz = j.optJSONArray("hazards")
+        val hazards = (0 until (hz?.length() ?: 0)).map {
+            val h = hz!!.getJSONObject(it)
+            MapHazard(h.getString("kind"), h.getString("label"), h.getDouble("lat"), h.getDouble("lon"))
+        }
         return RoadContext(
-            roadClass = bestRoad?.optString("highway")?.ifEmpty { null },
-            roadName = bestRoad?.optString("name")?.ifEmpty { null },
-            maxspeedKph = maxspeed,
+            roadClass = j.optString("roadClass").ifEmpty { null }?.takeIf { it != "null" },
+            roadName = j.optString("roadName").ifEmpty { null }?.takeIf { it != "null" },
+            maxspeedKph = if (j.isNull("maxspeedKph")) null else j.optInt("maxspeedKph").takeIf { it > 0 },
             hazards = hazards,
             fetchedAt = System.currentTimeMillis(),
         )

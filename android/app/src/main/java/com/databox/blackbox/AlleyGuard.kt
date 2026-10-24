@@ -189,7 +189,7 @@ class AlleyGuard(
         if (settings.autoWindow) runCatching {
             vehicle.getWindow().getCurrentWindowPosition(driverWindow, { pos -> prevWindow = pos
                 val crack = maxOf(1, windowMax / 10)
-                if (pos < crack) vehicle.getWindow().setWindowPosition(driverWindow, crack, { _, _ -> }, { e -> warn("창문: ${e.message}") })
+                if ((pos ?: 0) < crack) vehicle.getWindow().setWindowPosition(driverWindow, crack, { _, _ -> }, { e -> warn("창문: ${e.message}") })
             }, { e -> warn("창문 상태: ${e.message}") })
         }
         if (settings.autoVolume) runCatching {

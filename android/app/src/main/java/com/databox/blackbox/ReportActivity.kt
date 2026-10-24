@@ -69,10 +69,18 @@ class ReportActivity : AppCompatActivity() {
             addView(summary, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.5f))
             addView(route, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = 24 })
         }
+        val emergency = card(
+            label("사고 직후 대응", 22f, Palette.sub),
+            LinearLayout(this).apply { space(12) },
+            Emergency.buttons(this, report),
+            LinearLayout(this).apply { space(10) },
+            label("보험사 번호는 메인 화면 설정에서 등록 · 리포트는 「휴대폰으로 받기」로 전달", 20f, Palette.sub),
+            color = Palette.cardHi,
+        )
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(56, 40, 56, 40)
-            addView(topBar); space(24); addView(columns); space(24); addView(chart)
+            addView(topBar); space(24); addView(emergency); space(24); addView(columns); space(24); addView(chart)
         }
         return ScrollView(this).apply { setBackgroundColor(Palette.bg); addView(root) }
     }
