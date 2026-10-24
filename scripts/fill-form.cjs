@@ -52,8 +52,10 @@ function runsFor(text) {
 ;(async () => {
   const zip = await JSZip.loadAsync(fs.readFileSync(src))
   let xml = await zip.file('word/document.xml').async('string')
-  const start = xml.indexOf('02  앱 프로젝트 소개')
+  // 제목 텍스트가 여러 run으로 쪼개져 있을 수 있어, 확실히 한 run에 있는 '1. 앱 한 줄 소개'를 기준으로 잡는다
+  const start = xml.lastIndexOf('<w:p', xml.indexOf('1. 앱 한 줄 소개'))
   const end = xml.indexOf('개인정보 수집·이용 동의서')
+  if (start < 0 || end < 0) throw new Error('양식에서 02 섹션을 찾지 못함')
   let section = xml.slice(start, end)
 
   // 각 sdt 앞에서 가장 가까운 "N. " 제목을 찾아 번호로 매핑한다
