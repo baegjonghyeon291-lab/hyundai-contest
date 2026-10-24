@@ -26,7 +26,7 @@
 
 ## APK
 
-- `apk/데이터블랙박스_release.apk` → 제출 시 `성명_골목지킴이_release.apk`로 변경 예정 (release 서명)
+- `apk/백종현_골목지킴이_release.apk` (release 서명, 공모전 파일명 규정 `성명_앱이름_release.apk`)
 - 패키지 `com.databox.blackbox` · minSdk 28 · targetSdk 35
 
 ## 실행 방법

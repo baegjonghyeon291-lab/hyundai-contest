@@ -23,7 +23,7 @@
 - [x] 시연 영상 초안 (골목 시나리오 110초, docs/out/*.mp4) — [ ] 자막·사고·맡김 장면 포함 최종본
 - [x] 기획서 별지 DOCX (docs/out/골목지킴이_기획서_별지.docx, 그림 2 + 화면 7)
 - [x] 공식 접수양식 02 박스 채움 (docs/out/골목지킴이_접수양식_02작성.docx) — 01·04는 사용자가 직접
-- [x] GitHub README 갱신, release APK apk/골목지킴이_release.apk — [ ] 파일명 앞에 성명 ← **성함 필요**
+- [x] GitHub README 갱신, release APK apk/백종현_골목지킴이_release.apk (파일명 규정 완료)
 - [ ] 01 참가신청서·04 동의서 직접 기입·서명 (사용자)
 - [ ] 10/28 온라인 설명회 참석(시간은 공지 확인)
 
