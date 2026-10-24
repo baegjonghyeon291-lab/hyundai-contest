@@ -60,12 +60,10 @@ function runsFor(text) {
 
   // 각 sdt 앞에서 가장 가까운 "N. " 제목을 찾아 번호로 매핑한다
   let count = 0
-  section = section.replace(/<w:sdt>([\s\S]*?)<w:sdtContent>[\s\S]*?<\/w:sdtContent><\/w:sdt>/g, (m, props, offset) => {
-    const before = section.slice(0, offset)
-    const heads = [...before.matchAll(/<w:t[^>]*>(\d)\. /g)]
-    const n = heads.length ? Number(heads[heads.length - 1][1]) : null
-    if (!n || !answers[n]) return m
-    count++
+  // 02 섹션의 입력 박스는 보이는 번호 순서(1~8)대로 놓여 있으므로 순서로 매핑한다 (제목 텍스트는 run이 쪼개져 신뢰 불가)
+  section = section.replace(/<w:sdt>([\s\S]*?)<w:sdtContent>[\s\S]*?<\/w:sdtContent><\/w:sdt>/g, (m, props) => {
+    const n = ++count
+    if (!answers[n]) return m
     return `<w:sdt>${props}<w:sdtContent>${runsFor(answers[n])}</w:sdtContent></w:sdt>`
   })
   xml = xml.slice(0, start) + section + xml.slice(end)
