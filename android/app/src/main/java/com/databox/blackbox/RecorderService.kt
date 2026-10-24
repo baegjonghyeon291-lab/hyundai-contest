@@ -90,6 +90,8 @@ class RecorderService : Service() {
     private var tts: TextToSpeech? = null
     @Volatile private var ttsReady = false
 
+    lateinit var alley: AlleyGuard; private set
+
     private val ticker = object : Runnable {
         override fun run() {
             runCatching { onEverySecond() }.onFailure { warn("주기 작업 오류: ${it.message}") }
@@ -114,12 +116,14 @@ class RecorderService : Service() {
 
         vehicle = Vehicle(this).also { it.initialize() }
         location = FusedLocation(this).also { it.initialize() }
+        alley = AlleyGuard(this, vehicle, ::say, ::warn)
         // initialize()는 비동기 연결이라 잠시 후 구독한다.
         // 신호 하나가 실패해도 기록 전체가 멈추지 않게 각각 따로 감싼다.
         handler.postDelayed({
             runCatching { subscribeVehicle() }.onFailure { warn("차량 신호 구독 실패: ${it.message}") }
             runCatching { subscribeLocation() }.onFailure { warn("위치 구독 실패: ${it.message}") }
             runCatching { subscribeSeats() }.onFailure { warn("좌석 구독 실패: ${it.message}") }
+            runCatching { alley.start() }.onFailure { warn("골목지킴이 시작 실패: ${it.message}") }
         }, 1500)
         subscribeSpeed()
         subscribeAccelerometer()
@@ -128,6 +132,7 @@ class RecorderService : Service() {
 
     override fun onDestroy() {
         handler.removeCallbacks(ticker)
+        runCatching { alley.stop() }
         endTrip()
         calibration.save()
         tts?.release()
@@ -164,6 +169,7 @@ class RecorderService : Service() {
             Recorder.handover?.onSpeed(kph)
             Recorder.trip?.onSpeed(kph)
             learnMountDirection(kph)
+            alley.onSpeed(kph)
         }
         override fun onErrorEvent(propertyId: Int, areaId: Int) = warn("차속 수신 오류")
     }
@@ -183,6 +189,7 @@ class RecorderService : Service() {
     private val gearListener = object : GearSelectionListener {
         override fun onSelected(gear: VehicleGear?) {
             buffer.add(SignalKey.GEAR, gearCode(gear))
+            alley.gearPark = gear == VehicleGear.GEAR_PARK
             if (gear == VehicleGear.GEAR_PARK) {
                 if (parkedSince == null) parkedSince = System.currentTimeMillis()
             } else if (gear != null && gear != VehicleGear.GEAR_UNKNOWN) {
@@ -193,10 +200,11 @@ class RecorderService : Service() {
         override fun onFailed(e: Exception) = warn("기어: ${e.message}")
     }
     private val turnSignalListener = object : TurnSignalStateListener {
-        override fun onTurnSignalStateUpdated(state: TurnSignalValue?) = buffer.add(
-            SignalKey.TURN_SIGNAL,
-            when (state) { TurnSignalValue.LEFT -> 1.0; TurnSignalValue.RIGHT -> 2.0; else -> 0.0 },
-        )
+        override fun onTurnSignalStateUpdated(state: TurnSignalValue?) {
+            val code = when (state) { TurnSignalValue.LEFT -> 1; TurnSignalValue.RIGHT -> 2; else -> 0 }
+            buffer.add(SignalKey.TURN_SIGNAL, code.toDouble())
+            alley.turnSignal = code
+        }
         override fun onFailed(e: Exception) = warn("방향지시등: ${e.message}")
     }
     private val brakeListener = object : BrakePedalStatusListener {
@@ -204,7 +212,10 @@ class RecorderService : Service() {
         override fun onFailed(e: Exception) = warn("브레이크: ${e.message}")
     }
     private val lowBeamListener = object : LightStateListener {
-        override fun onLightStateUpdated(state: LightState?) = buffer.add(SignalKey.LOW_BEAM, onOff(state == LightState.ON))
+        override fun onLightStateUpdated(state: LightState?) {
+            buffer.add(SignalKey.LOW_BEAM, onOff(state == LightState.ON))
+            alley.lowBeam = state == LightState.ON
+        }
         override fun onFailed(e: Exception) = warn("전조등: ${e.message}")
     }
     private val highBeamListener = object : LightStateListener {
@@ -212,11 +223,16 @@ class RecorderService : Service() {
         override fun onFailed(e: Exception) = warn("상향등: ${e.message}")
     }
     private val wiperListener = object : WiperStateListener {
-        override fun onWiperStateUpdated(state: WiperState?) = buffer.add(SignalKey.WIPER, onOff(state == WiperState.ON))
+        override fun onWiperStateUpdated(state: WiperState?) {
+            buffer.add(SignalKey.WIPER, onOff(state == WiperState.ON))
+            alley.wiper = state == WiperState.ON
+        }
         override fun onFailed(e: Exception) = warn("와이퍼: ${e.message}")
     }
     private val steeringListener = object : SteeringWheelAngleListener {
-        override fun onSteeringWheelAngleUpdated(deg: Float?) { deg?.let { buffer.add(SignalKey.STEERING_DEG, it.toDouble()) } }
+        override fun onSteeringWheelAngleUpdated(deg: Float?) {
+            deg?.let { buffer.add(SignalKey.STEERING_DEG, it.toDouble()); alley.steeringDeg = it.toDouble() }
+        }
         override fun onFailed(e: Exception) = warn("핸들 각도: ${e.message}")
     }
     private val airbagListener = object : SeatAirbagDeployedListener {
@@ -315,6 +331,7 @@ class RecorderService : Service() {
         buffer.add(SignalKey.LON, lon)
         Recorder.handover?.onLocation(lat, lon)
         Recorder.trip?.onLocation(lat, lon)
+        alley.onPosition(lat, lon)
     }
 
     private fun subscribeLocation() {
@@ -429,6 +446,7 @@ class RecorderService : Service() {
         Recorder.trip?.onSecond(kph, now)
         parkedSince?.let { if (now - it >= TRIP_END_PARK_MS) { endTrip(); parkedSince = null } }
         checkSeatBelts(now, kph)
+        alley.tick(now)
     }
 
     // ── 안전벨트 안내 ─────────────────────────────────────────────────────
@@ -444,6 +462,7 @@ class RecorderService : Service() {
                             // Vehicle SDK 2.3.2는 VHAL 값 1을 true로 바꾸는데, 표준 SEAT_OCCUPANCY에서 1은 VACANT(빈자리)·2가 OCCUPIED다.
                             // 에뮬레이터 콘솔로 탑승시킨 좌석이 false로 오는 것까지 확인 → SDK 값을 뒤집어 '탑승'으로 쓴다.
                             occupied[name] = v == false
+                            Recorder.occupiedSeats = occupied.filter { it.value }.keys.toSet()
                         }
                         override fun onFailed(e: Exception) = warn("탑승 감지($name): ${e.message}")
                     }
@@ -586,4 +605,7 @@ object Recorder {
     @Volatile var calibrationSamples = 0
     @Volatile var unbuckledSeats: List<String> = emptyList()
     @Volatile var lastBeltNotice: BeltNotice? = null
+    @Volatile var occupiedSeats: Set<String> = emptySet()
+    @Volatile var alleyState = AlleyState()
+    @Volatile var lastAlleyMessage: String? = null
 }

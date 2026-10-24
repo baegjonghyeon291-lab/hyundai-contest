@@ -15,6 +15,14 @@
     <uses-permission android:name="pleos.car.permission.CAR_CLIMATE" />
     <!-- 안전벨트 음성 안내 -->
     <uses-permission android:name="pleos.car.permission.TTS_SERVICE" />
+    <!-- 골목지킴이: 내비 주의지점·회전 정보, 조명·창문·공조 자동 제어 -->
+    <uses-permission android:name="pleos.car.permission.NAVI_ROUTE" />
+    <uses-permission android:name="pleos.car.permission.CONTROL_CAR_LIGHTS" />
+    <uses-permission android:name="pleos.car.permission.CONTROL_CAR_WINDOWS" />
+    <uses-permission android:name="pleos.car.permission.CONTROL_CAR_CLIMATE" />
+    <uses-permission android:name="pleos.car.permission.CAR_DOORS" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- 차속: 차량 표준 API (계기판과 같은 출처) -->
     <uses-permission android:name="android.car.permission.CAR_SPEED" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />

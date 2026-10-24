@@ -14,6 +14,11 @@ enum class SignalKey {
     ACCEL_X, ACCEL_Y, ACCEL_Z, // m/s², 충격 방향 추정용
     LAT, LON,
     AIRBAG,         // 0/1
+    ALLEY,          // 0/1 골목 모드
+    ALLEY_TARGET,   // 골목 기준 속도 km/h
+    ALLEY_LEVEL,    // 0~3 위험 단계
+    ALLEY_WARNED,   // 1 = 운전자에게 경고 음성이 나간 시점
+    AUTO_LIGHTS,    // 1 = 앱이 전조등·안개등을 자동 점등한 상태
 }
 
 data class Sample(val t: Long, val key: SignalKey, val value: Double)
