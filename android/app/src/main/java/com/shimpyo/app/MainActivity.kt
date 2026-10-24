@@ -12,6 +12,14 @@ import androidx.appcompat.app.AppCompatActivity
 import ai.pleos.playground.vehicle.Vehicle
 import ai.pleos.playground.vehicle.api.model.area.SeatArea
 import ai.pleos.playground.vehicle.api.model.capability.AreaBounds
+import ai.pleos.playground.vehicle.api.model.capability.CapabilityConfig
+import ai.pleos.playground.vehicle.listener.SeatAirbagDeployedListener
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import kotlin.math.abs
+import kotlin.math.sqrt
 import ai.pleos.playground.vehicle.constant.area.SeatValue
 import ai.pleos.playground.vehicle.constant.area.TurnSignalValue
 import ai.pleos.playground.vehicle.constant.control.VehicleGear
@@ -35,6 +43,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var gearView: TextView
     private lateinit var turnSignalView: TextView
     private lateinit var tempView: TextView
+    private lateinit var airbagView: TextView
+    private lateinit var impactView: TextView
     private lateinit var logView: TextView
 
     private var targetTemp: Float? = null
@@ -48,6 +58,33 @@ class MainActivity : AppCompatActivity() {
         override fun onTurnSignalStateUpdated(state: TurnSignalValue?) =
             ui { turnSignalView.text = "방향지시등: ${turnSignalLabel(state)}" }
         override fun onFailed(e: Exception) = log("방향지시등 구독 실패: ${e.message}")
+    }
+
+    // 충돌 감지 ① 에어백 전개 신호 (좌석별)
+    private val airbagAreas = mutableListOf<SeatArea>()
+    private val airbagListener = object : SeatAirbagDeployedListener {
+        override fun onSeatAirbagDeployUpdated(deployed: Boolean?) = ui {
+            airbagView.text = "에어백: ${if (deployed == true) "💥 전개됨 — 충돌!" else "정상"}"
+            if (deployed == true) log("에어백 전개 감지 → 충돌로 판단")
+        }
+        override fun onFailed(e: Exception) = log("에어백 구독 실패: ${e.message}")
+    }
+
+    // 충돌 감지 ② 가속도 센서 충격량 (중력 1G 기준 차이)
+    private lateinit var sensorManager: SensorManager
+    private var maxImpactG = 0f
+    private val accelListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent) {
+            val (x, y, z) = event.values
+            val impactG = abs(sqrt(x * x + y * y + z * z) / SensorManager.GRAVITY_EARTH - 1f)
+            if (impactG > maxImpactG) maxImpactG = impactG
+            val hit = impactG >= IMPACT_THRESHOLD_G
+            ui {
+                impactView.text = "충격: %.2f G (최대 %.2f G)%s".format(impactG, maxImpactG, if (hit) "  💥 충돌 감지!" else "")
+            }
+            if (hit) log("충격 %.1fG 감지 → 충돌로 판단".format(impactG))
+        }
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -64,14 +101,36 @@ class MainActivity : AppCompatActivity() {
             refresh()
             vehicle.getGear().registerGearSelection(gearListener)
             vehicle.getTurnSignal().registerTurnSignalState(turnSignalListener)
+            watchAirbags()
         }, 1500)
+
+        sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
+        val accel = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        if (accel == null) {
+            impactView.text = "충격: 가속도 센서 없음"
+        } else {
+            sensorManager.registerListener(accelListener, accel, SensorManager.SENSOR_DELAY_GAME)
+        }
     }
 
     override fun onDestroy() {
+        sensorManager.unregisterListener(accelListener)
+        airbagAreas.forEach { vehicle.getSafety().unregisterSeatAirbagDeployed(it, airbagListener) }
         vehicle.getGear().unregisterGearSelection(gearListener)
         vehicle.getTurnSignal().unregisterTurnSignalState(turnSignalListener)
         vehicle.release()
         super.onDestroy()
+    }
+
+    private fun watchAirbags() {
+        vehicle.getSafety().checkAirbagDeployedCapabilities(
+            { _: CapabilityConfig, areas: List<SeatArea> ->
+                airbagAreas += areas
+                areas.forEach { vehicle.getSafety().registerSeatAirbagDeployed(it, airbagListener) }
+                ui { airbagView.text = "에어백: 감시 중 (${areas.size}개 좌석)" }
+            },
+            { e -> log("에어백 지원 확인 실패: ${e.message}") },
+        )
     }
 
     private fun loadHvacAreas() {
@@ -157,6 +216,8 @@ class MainActivity : AppCompatActivity() {
         gearView = label(34f).apply { text = "기어: -" }
         turnSignalView = label(34f).apply { text = "방향지시등: -" }
         tempView = label(34f).apply { text = "운전석 설정 온도: -" }
+        airbagView = label(34f).apply { text = "에어백: -" }
+        impactView = label(34f).apply { text = "충격: -" }
         logView = label(20f).apply { setTextColor(Color.LTGRAY) }
 
         val buttons = LinearLayout(this).apply {
@@ -177,6 +238,8 @@ class MainActivity : AppCompatActivity() {
             addView(gearView)
             addView(turnSignalView)
             addView(tempView)
+            addView(airbagView)
+            addView(impactView)
             addView(buttons)
             addView(logView)
         }
@@ -199,6 +262,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun ui(block: () -> Unit) = runOnUiThread(block)
+
+    companion object {
+        // 일반 주행·과속방지턱은 1G 미만, 경미한 접촉사고도 보통 2~4G 이상
+        private const val IMPACT_THRESHOLD_G = 2.5f
+    }
 
     private fun log(message: String) = ui {
         logView.text = (message + "\n" + logView.text).lines().take(6).joinToString("\n")
