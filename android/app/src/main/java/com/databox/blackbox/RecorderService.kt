@@ -116,7 +116,7 @@ class RecorderService : Service() {
 
         vehicle = Vehicle(this).also { it.initialize() }
         location = FusedLocation(this).also { it.initialize() }
-        alley = AlleyGuard(this, vehicle, ::say, ::warn)
+        alley = AlleyGuard(this, vehicle, ::say, ::warn, ::headsUp)
         // initialize()는 비동기 연결이라 잠시 후 구독한다.
         // 신호 하나가 실패해도 기록 전체가 멈추지 않게 각각 따로 감싼다.
         handler.postDelayed({
@@ -548,9 +548,34 @@ class RecorderService : Service() {
         if (ttsReady) runCatching { tts?.speak(text, false) }.onFailure { warn("음성 안내 실패: ${it.message}") }
     }
 
+    /** 주행 중 화면이 가려져도 보이는 헤드업 알림. 몇 초 뒤 자동으로 사라진다. */
+    private fun headsUp(title: String, text: String, urgent: Boolean) {
+        val nm = getSystemService(NotificationManager::class.java)
+        val open = android.app.PendingIntent.getActivity(
+            this, 0, Intent(this, DriveActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val n = Notification.Builder(this, ALLEY_CHANNEL)
+            .setSmallIcon(if (urgent) android.R.drawable.ic_dialog_alert else android.R.drawable.ic_menu_directions)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(Notification.BigTextStyle().bigText(text))
+            .setCategory(Notification.CATEGORY_NAVIGATION)
+            .setPriority(Notification.PRIORITY_HIGH)
+            .setContentIntent(open)
+            .setTimeoutAfter(if (urgent) 8_000 else 6_000)
+            .setOnlyAlertOnce(false)
+            .build()
+        nm.notify(2, n)
+    }
+
     private fun startForegroundWithNotice() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL, "주행 기록", NotificationManager.IMPORTANCE_LOW))
+        nm.createNotificationChannel(NotificationChannel(ALLEY_CHANNEL, "골목 안내", NotificationManager.IMPORTANCE_HIGH).apply {
+            description = "골목 진입·과속·위험 지점 안내 (주행 중 헤드업)"
+            setSound(null, null) // 음성 안내가 따로 나가므로 알림음은 끈다
+        })
         val notice = Notification.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.presence_video_online)
             .setContentTitle("데이터 블랙박스 기록 중")
@@ -577,6 +602,7 @@ class RecorderService : Service() {
     companion object {
         private const val TAG = "DataBlackBox"
         private const val CHANNEL = "recorder"
+        private const val ALLEY_CHANNEL = "alley"
         // 일반 주행·과속방지턱은 1G 미만, 접촉사고도 보통 2~4G 이상
         const val IMPACT_THRESHOLD_G = 2.5
         const val PRE_MS = 30_000L

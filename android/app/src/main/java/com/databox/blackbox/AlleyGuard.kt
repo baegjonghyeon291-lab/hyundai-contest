@@ -30,6 +30,7 @@ class AlleyGuard(
     private val vehicle: Vehicle,
     private val say: (String) -> Unit,
     private val warn: (String) -> Unit,
+    private val notify: (title: String, text: String, urgent: Boolean) -> Unit = { _, _, _ -> },
 ) {
     val engine = AlleyEngine()
     private val settings = Settings(context)
@@ -167,6 +168,15 @@ class AlleyGuard(
         say(text)
         buffer.add(SignalKey.ALLEY_WARNED, 1.0, now)
         Recorder.lastAlleyMessage = text
+        // 주행 중엔 앱 화면이 가려지므로 헤드업 알림으로도 보여 준다 (음성과 같은 내용, 큰 글자 한 줄)
+        val s = engine.state
+        val title = when {
+            s.inAlley && s.level >= 3 -> "⚠ 위험 · 즉시 감속"
+            s.inAlley && s.level == 2 -> "골목 · 기준 ${s.targetKph} 초과"
+            s.inAlley -> "골목 모드 · 기준 ${s.targetKph}"
+            else -> "골목지킴이"
+        }
+        notify(title, text, s.level >= 2)
     }
 
     // ── 차량 제어 ─────────────────────────────────────────────────────────
