@@ -112,11 +112,12 @@ class AlleyEngine {
         // ── 급제동 핫스팟 ──
         var hotspotCount = 0
         if (lat != null && lon != null) for (h in hotspots) {
-            if (Osm.distanceM(lat, lon, h.lat, h.lon) <= 60) {
-                hotspotCount += h.count
-                val key = "${h.lat},${h.lon}"
-                if (now - (hotspotAnnouncedAt[key] ?: 0L) > 120_000 && h.count >= 2) { hotspotAnnouncedAt[key] = now; events += AlleyEvent.HOTSPOT }
-            }
+            if (Osm.distanceM(lat, lon, h.lat, h.lon) <= 60) hotspotCount += h.count
+        }
+        // 격자 여러 개가 겹쳐도 안내는 90초에 한 번만
+        if (hotspotCount >= 2 && now - (hotspotAnnouncedAt["any"] ?: 0L) > 90_000) {
+            hotspotAnnouncedAt["any"] = now
+            events += AlleyEvent.HOTSPOT
         }
 
         // ── 위험 단계 ──
