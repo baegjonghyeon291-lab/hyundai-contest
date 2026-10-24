@@ -20,6 +20,7 @@
     "@types/react-dom": "^19.3.0",
     "@vercel/node": "^5.3.6",
     "@vitejs/plugin-react": "^6.1.2",
+    "docx": "^9.5.1",
     "oxlint": "^1.88.0",
     "sharp": "^0.34.3",
     "typescript": "~6.0.3",
