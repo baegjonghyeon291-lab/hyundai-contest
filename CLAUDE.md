@@ -20,7 +20,8 @@
 ## 공모전 핵심 (상세: docs/contest.md)
 - 현대차·기아 차량용 앱 개발 공모전. **Pleos Playground 공개 API** 활용 필수.
 - 분야: 차량 내 엔터테인먼트 / 운전자 건강·생활 / 안전 운전 / 가족·동승자 편의
-- **마감 2026-11-15(일)**. 기획서 필수, 데모 영상·구현물 선택. 제출: appdevchallenge@hyundai-partners.com
+- **마감 2026-11-15(일)**. 접수양식(DOCX)=기획서 필수. 시연 영상·GitHub(소스+APK)는 가산점. 2차 PT(12/3~4) 전까지 실제 동작 앱 필요.
+- 심사: 차량특화성 / 창의성 / 기술 활용성(Pleos SDK) / 사업성(MAU·Retention). 공식: https://appdevchallenge.auto-hmg.io/
 - 수상작은 실제 차량 출시 검토 → 실현 가능성·Pleos API 활용도가 중요
 
 ## 진행 상황 / 결정 사항
