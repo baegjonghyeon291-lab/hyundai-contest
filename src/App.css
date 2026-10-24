@@ -1,0 +1,44 @@
+.phone {
+  width: 100%;
+  max-width: 390px;
+  min-height: 100vh;
+  margin: 0 auto;
+  background: #f6f7f9;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 500px) {
+  .phone {
+    min-height: 780px;
+    margin: 40px auto;
+    border-radius: 32px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+    overflow: hidden;
+  }
+}
+
+.app-header {
+  background: #002c5f;
+  color: #fff;
+  padding: 20px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.app-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: #333;
+}

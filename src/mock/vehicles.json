@@ -1,0 +1,4 @@
+[
+  { "id": "v1", "model": "아이오닉 5", "plate": "12가 3456", "battery": 78, "mileage": 15230 },
+  { "id": "v2", "model": "아반떼", "plate": "34나 7890", "battery": null, "mileage": 42110 }
+]
