@@ -110,6 +110,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     put(key, JSON.stringify(road), { access: 'public', addRandomSuffix: false, allowOverwrite: true, contentType: 'application/json' }).catch(() => {})
     return res.status(200).json({ ...road, cached: false })
   } catch (e) {
-    return res.status(502).json({ error: (e as Error).message })
+    // 지도 서버가 느리거나 막혀도 차 안의 앱은 멈추면 안 된다: '모름'으로 응답(캐시 안 함) → 앱은 일반 도로로 취급
+    return res.status(200).json({ roadClass: null, roadName: null, maxspeedKph: null, hazards: [], fetchedAt: Date.now(), source: 'unavailable', unavailable: true, error: (e as Error).message })
   }
 }

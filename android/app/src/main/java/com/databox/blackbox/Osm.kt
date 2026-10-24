@@ -20,6 +20,8 @@ data class RoadContext(
     val maxspeedKph: Int?,
     val hazards: List<MapHazard>,
     val fetchedAt: Long,
+    val lat: Double = 0.0,        // 조회한 위치 — 멀어지면 오래된 정보로 취급
+    val lon: Double = 0.0,
 ) {
     /** 이면도로(골목)로 볼 도로 등급. */
     val isAlleyClass get() = roadClass in setOf("residential", "living_street", "service", "unclassified", "pedestrian")
@@ -82,6 +84,7 @@ object Osm {
             maxspeedKph = if (j.isNull("maxspeedKph")) null else j.optInt("maxspeedKph").takeIf { it > 0 },
             hazards = hazards,
             fetchedAt = System.currentTimeMillis(),
+            lat = lat, lon = lon,
         )
     }
 

@@ -107,6 +107,8 @@ class AlleyGuard(
 
     fun onPosition(lat: Double, lon: Double) {
         this.lat = lat; this.lon = lon
+        // 조회 실패로 새 도로 정보를 못 받아도, 예전 지점에서 120m 넘게 멀어졌으면 '모름'으로 둔다 (골목 이탈이 걸리도록)
+        engine.road?.let { if (Osm.distanceM(lat, lon, it.lat, it.lon) > 120) engine.road = null }
         Osm.lookup(lat, lon) { engine.road = it }
         Hotspots.refresh(lat, lon)
         engine.hotspots = Hotspots.nearby
