@@ -18,18 +18,5 @@
       "Bash(rm -rf /*)",
       "Bash(rm -rf ~*)"
     ]
-  },
-  "hooks": {
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"$CLAUDE_PROJECT_DIR/.claude/notify.ps1\" 2>/dev/null || true",
-            "async": true
-          }
-        ]
-      }
-    ]
   }
 }

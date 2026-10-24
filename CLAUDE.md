@@ -28,3 +28,4 @@
 
 ## 작업 방식 (사용자 선호)
 - 승인 확인 없이 진행하고 결과만 보고. 작업 끝나면 Windows 알림(Stop hook).
+- 알림은 PC별 설정: `.claude/notify.ps1`을 `~/.claude/notify.ps1`로 복사하고 `~/.claude/settings.json`에 Stop hook 등록. 새 PC에서 알림이 안 오면 이 작업부터 할 것.
