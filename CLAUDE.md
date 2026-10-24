@@ -6,6 +6,7 @@
 - 집 PC와 회사 PC 두 곳에서 작업한다. GitHub 저장소가 원본이다.
 - 작업 시작 시 `git pull`, 끝날 때 `git push`. push하면 Vercel이 자동 배포한다.
 - Node 버전은 `.nvmrc` 참고.
+- 배포 URL: https://hyundai-contest.vercel.app (Vercel 프로젝트: baegjonghyeon291-labs-projects/hyundai-contest)
 
 ## 구조
 - `docs/` — 계획서 (Markdown). `docs/plan.md`가 메인.

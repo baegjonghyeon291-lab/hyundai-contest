@@ -18,7 +18,7 @@
 ## 5. 타깃 사용자
 
 ## 6. 화면 구성 (프로토타입)
-- 배포 URL:
+- 배포 URL: https://hyundai-contest.vercel.app
 
 ## 7. 데이터 (목업)
 - `src/mock/` 참고
