@@ -3,29 +3,45 @@ package com.shimpyo.app
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
-/** 메인: 기록 상태(실시간 신호) + 저장된 사고 목록. */
+/** 메인: 기록 상태 + 실시간 신호 + 맡김 모드 + 기록 목록(사고/맡김 탭). */
 class MainActivity : AppCompatActivity() {
 
     private val handler = Handler(Looper.getMainLooper())
-    private lateinit var statusView: TextView
-    private lateinit var liveView: TextView
+    private lateinit var status: TextView
+    private lateinit var speed: TextView
+    private lateinit var gear: TextView
+    private lateinit var signal: TextView
+    private lateinit var brake: TextView
+    private lateinit var lights: TextView
+    private lateinit var impact: TextView
+    private lateinit var handoverBox: LinearLayout
     private lateinit var listBox: LinearLayout
+    private lateinit var tabCrash: TextView
+    private lateinit var tabHandover: TextView
+    private var showCrashes = true
     private var shownCount = -1
+    private var handoverShown: HandoverTracker? = null
+    private var handoverRendered = false
+    private var handoverTitle: TextView? = null
+    private var handoverStats: TextView? = null
 
     private val tick = object : Runnable {
         override fun run() {
             renderLive()
             if (Recorder.savedCount != shownCount) renderList()
+            if (Recorder.handover !== handoverShown || !handoverRendered) renderHandover()
+            updateHandoverStats()
             handler.postDelayed(this, 300)
         }
     }
@@ -66,87 +82,157 @@ class MainActivity : AppCompatActivity() {
         if (!Recorder.running) startForegroundService(Intent(this, RecorderService::class.java))
     }
 
+    // ── 실시간 ───────────────────────────────────────────────────────────
+
     private fun renderLive() {
         val b = Recorder.buffer
-        val pending = Recorder.pending
-        statusView.text = when {
-            pending != null -> "🔴 사고 감지 — 충돌 후 상황 기록 중…"
-            Recorder.running -> "● 기록 중"
-            else -> "○ 기록 꺼짐"
+        val (text, color) = when {
+            Recorder.pending != null -> "● 사고 감지 — 충돌 후 상황 기록 중" to Palette.bad
+            Recorder.handover != null -> "● 기록 중 · ${Recorder.handover!!.mode.label} 맡김 모드" to Palette.warn
+            Recorder.running -> "● 상시 기록 중" to Palette.good
+            else -> "○ 기록 꺼짐" to Palette.sub
         }
-        statusView.setTextColor(if (pending != null) Color.parseColor("#FF5252") else Color.parseColor("#66BB6A"))
+        status.text = text
+        status.setTextColor(color)
 
-        val turn = when (b.latest(SignalKey.TURN_SIGNAL)?.toInt()) { 1 -> "◀ 왼쪽"; 2 -> "오른쪽 ▶"; else -> "꺼짐" }
-        liveView.text = listOf(
-            "속도  " + (b.latest(SignalKey.SPEED_KPH)?.let { "%.1f km/h".format(it) } ?: "-"),
-            "기어  " + CrashReport.gearLabel(b.latest(SignalKey.GEAR)?.toInt()),
-            "깜빡이  $turn",
-            "브레이크  " + if (b.latest(SignalKey.BRAKE) == 1.0) "밟음" else "-",
-            "전조등  " + if (b.latest(SignalKey.LOW_BEAM) == 1.0) "켜짐" else "꺼짐",
-            "충격  %.2f G  (사고 기준 %.1f G)".format(Recorder.liveImpactG, RecorderService.IMPACT_THRESHOLD_G),
-        ).joinToString("\n")
+        speed.text = b.latest(SignalKey.SPEED_KPH)?.let { "%.0f".format(it) } ?: "-"
+        gear.text = when (b.latest(SignalKey.GEAR)?.toInt()) { 0 -> "P"; 1 -> "R"; 2 -> "N"; 3 -> "D"; else -> "-" }
+        signal.text = when (b.latest(SignalKey.TURN_SIGNAL)?.toInt()) { 1 -> "◀ 왼쪽"; 2 -> "오른쪽 ▶"; else -> "꺼짐" }
+        signal.setTextColor(if ((b.latest(SignalKey.TURN_SIGNAL) ?: 0.0) != 0.0) Palette.warn else Palette.text)
+        val braking = b.latest(SignalKey.BRAKE) == 1.0
+        brake.text = if (braking) "밟음" else "-"
+        brake.setTextColor(if (braking) Palette.bad else Palette.text)
+        lights.text = when {
+            b.latest(SignalKey.HIGH_BEAM) == 1.0 -> "상향"
+            b.latest(SignalKey.LOW_BEAM) == 1.0 -> "켜짐"
+            else -> "꺼짐"
+        }
+        impact.text = "%.2f G".format(Recorder.liveImpactG)
+        impact.setTextColor(if (Recorder.liveImpactG >= RecorderService.IMPACT_THRESHOLD_G) Palette.bad else Palette.text)
     }
+
+    // ── 맡김 모드 ─────────────────────────────────────────────────────────
+
+    private fun renderHandover() {
+        val h = Recorder.handover
+        handoverShown = h
+        handoverRendered = true
+        handoverBox.removeAllViews()
+        if (h == null) {
+            handoverBox.addView(label("차를 남에게 맡길 때 켜 두세요", 22f, Palette.sub))
+            handoverBox.space(16)
+            handoverBox.addView(row(*HandoverMode.entries.map { mode ->
+                ghostButton("${mode.icon} ${mode.label}") { Recorder.service?.startHandover(mode) }
+            }.toTypedArray(), gap = 14))
+        } else {
+            handoverTitle = label("", 28f, Palette.warn, bold = true)
+            handoverStats = label("", 24f, Palette.text)
+            handoverBox.addView(handoverTitle)
+            handoverBox.addView(handoverStats)
+            updateHandoverStats()
+            handoverBox.space(16)
+            handoverBox.addView(row(actionButton("돌려받기 · 리포트 보기", Palette.warn) {
+                Recorder.service?.finishHandover { record ->
+                    startActivity(Intent(this, HandoverActivity::class.java).putExtra("id", record.id))
+                }
+            }, weights = false))
+        }
+    }
+
+    private fun updateHandoverStats() {
+        val h = Recorder.handover ?: return
+        val title = handoverTitle ?: return
+        val min = (System.currentTimeMillis() - h.start) / 60_000
+        title.text = "${h.mode.icon} ${h.mode.label}에 맡김 · ${min}분 경과"
+        handoverStats?.text = "주행 %.2f km · 최고 %.0f km/h · 급제동 %d · 급가속 %d".format(
+            h.distanceKm, h.maxSpeedKph, h.hardBrakes, h.hardAccels,
+        )
+    }
+
+    // ── 기록 목록 ─────────────────────────────────────────────────────────
 
     private fun renderList() {
         shownCount = Recorder.savedCount
+        tabCrash.background = if (showCrashes) rounded(Palette.cardHi, 18f) else null
+        tabHandover.background = if (!showCrashes) rounded(Palette.cardHi, 18f) else null
         listBox.removeAllViews()
-        val events = CrashStore(this).list()
-        if (events.isEmpty()) {
-            listBox.addView(text("저장된 사고 기록이 없습니다.", 28f, Color.GRAY))
-            return
-        }
-        events.forEach { e ->
-            val r = CrashReport(e)
-            listBox.addView(Button(this).apply {
-                text = "${r.crashTimeText}   ${e.cause} %.1fG   %s".format(
-                    e.peakG, r.speedAtCrash?.let { "%.0f km/h".format(it) } ?: "",
-                )
-                textSize = 26f
-                isAllCaps = false
-                setOnClickListener {
-                    startActivity(Intent(this@MainActivity, ReportActivity::class.java).putExtra("id", e.id))
-                }
-            })
+        val fmt = SimpleDateFormat("MM.dd HH:mm:ss", Locale.KOREA)
+        if (showCrashes) {
+            val events = CrashStore(this).list()
+            if (events.isEmpty()) listBox.addView(label("사고 기록이 없습니다. 충격이 감지되면 자동으로 저장됩니다.", 22f, Palette.sub))
+            events.forEach { e ->
+                val r = CrashReport(e)
+                listBox.addView(listItem(
+                    "💥 ${fmt.format(Date(e.crashTime))}",
+                    "${e.cause} %.1fG · ${r.speedAtCrash?.let { "%.0f km/h".format(it) } ?: "-"}".format(e.peakG),
+                ) { startActivity(Intent(this, ReportActivity::class.java).putExtra("id", e.id)) })
+            }
+        } else {
+            val records = HandoverStore(this).list()
+            if (records.isEmpty()) listBox.addView(label("맡김 기록이 없습니다.", 22f, Palette.sub))
+            records.forEach { r ->
+                listBox.addView(listItem(
+                    "${r.mode.icon} ${r.mode.label} · ${fmt.format(Date(r.start))}",
+                    "%.1f km · %.0f분%s".format(r.distanceKm, r.durationMin, if (r.suspiciousDistance) " · ⚠️ 이동 의심" else ""),
+                ) { startActivity(Intent(this, HandoverActivity::class.java).putExtra("id", r.id)) })
+            }
         }
     }
 
-    private fun buildLayout(): ScrollView {
-        statusView = text("", 36f, Color.WHITE)
-        liveView = text("", 30f, Color.WHITE).apply { setLineSpacing(8f, 1f) }
-        listBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+    private fun listItem(title: String, sub: String, onClick: () -> Unit) = card(
+        label(title, 26f, Palette.text, bold = true), label(sub, 22f, Palette.sub), pad = 26, color = Palette.cardHi,
+    ).apply {
+        setOnClickListener { onClick() }
+        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            .apply { bottomMargin = 16 }
+    }
 
+    // ── 레이아웃 ─────────────────────────────────────────────────────────
+
+    private fun buildLayout(): ScrollView {
+        fun big() = label("-", 40f, Palette.text, bold = true)
+        status = label("", 26f, Palette.good, bold = true)
+        speed = big(); gear = big(); signal = big(); brake = big(); lights = big(); impact = big()
+        handoverBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        listBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        tabCrash = label("사고 기록", 26f, Palette.text, bold = true).apply {
+            setPadding(30, 12, 30, 12); setOnClickListener { showCrashes = true; renderList() }
+        }
+        tabHandover = label("맡김 기록", 26f, Palette.text, bold = true).apply {
+            setPadding(30, 12, 30, 12); setOnClickListener { showCrashes = false; renderList() }
+        }
+
+        val live = card(
+            label("실시간 차량 상태", 22f, Palette.sub),
+            LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; space(16) },
+            row(tile("속도 km/h", speed), tile("기어", gear), tile("방향지시등", signal)),
+            LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; space(16) },
+            row(tile("브레이크", brake), tile("전조등", lights), tile("충격 (기준 2.5G)", impact)),
+        )
+        val handover = card(label("맡김 모드", 22f, Palette.sub), handoverBox)
         val left = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            addView(text("실시간 차량 상태", 28f, Color.LTGRAY))
-            addView(liveView)
+            addView(live); space(24); addView(handover)
         }
-        val right = LinearLayout(this).apply {
+        val right = card(row(tabCrash, tabHandover, gap = 8, weights = false), LinearLayout(this).apply { space(16) }, listBox)
+
+        val header = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(60, 0, 0, 0)
-            addView(text("사고 기록", 28f, Color.LTGRAY))
-            addView(listBox)
+            addView(label("데이터 블랙박스", 44f, Palette.text, bold = true))
+            addView(label("영상이 못 남기는 내 차의 순간을 숫자로 남깁니다", 22f, Palette.sub))
+            space(10)
+            addView(status)
         }
         val columns = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            addView(left, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-            addView(right, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.4f))
+            addView(left, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.15f))
+            addView(right, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = 28 })
         }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#0B1A2E"))
-            setPadding(70, 50, 70, 50)
-            addView(text("데이터 블랙박스", 46f, Color.WHITE))
-            addView(text("영상이 못 남기는 내 차의 순간을 숫자로 남깁니다", 24f, Color.GRAY))
-            addView(statusView)
-            addView(columns)
+            setPadding(56, 44, 56, 44)
+            addView(header); space(28); addView(columns)
         }
-        return ScrollView(this).apply { setBackgroundColor(Color.parseColor("#0B1A2E")); addView(root) }
-    }
-
-    private fun text(value: String, size: Float, color: Int) = TextView(this).apply {
-        text = value
-        textSize = size
-        setTextColor(color)
-        setPadding(0, 10, 0, 10)
+        return ScrollView(this).apply { setBackgroundColor(Palette.bg); addView(root) }
     }
 }

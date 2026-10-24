@@ -51,6 +51,14 @@ class CrashReport(val event: CrashEvent) {
 
     fun secondsBefore(t: Long) = (crash - t) / 1000.0
 
+    /** 기록 구간의 이동 경로 (위도, 경도). */
+    fun path(): List<Pair<Double, Double>> {
+        val lats = series(SignalKey.LAT)
+        val lons = series(SignalKey.LON)
+        return lats.mapNotNull { la -> lons.lastOrNull { it.t <= la.t }?.let { la.value to it.value } }
+            .distinct()
+    }
+
     /** 리포트 본문 줄들. (제목, 내용, 운전자에게 유리한 사실인지) */
     fun lines(): List<Triple<String, String, Boolean?>> = buildList {
         add(Triple("감지", "${event.cause} · 최대 충격 %.1f G".format(event.peakG), null))

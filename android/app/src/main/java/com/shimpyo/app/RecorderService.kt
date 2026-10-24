@@ -24,7 +24,9 @@ import ai.pleos.playground.location.fused.model.LocationData
 import ai.pleos.playground.vehicle.Vehicle
 import ai.pleos.playground.vehicle.api.model.area.SeatArea
 import ai.pleos.playground.vehicle.api.model.area.WindowArea
+import ai.pleos.playground.vehicle.api.model.capability.AreaBounds
 import ai.pleos.playground.vehicle.api.model.capability.CapabilityConfig
+import ai.pleos.playground.vehicle.constant.unit.TemperatureUnit
 import ai.pleos.playground.vehicle.constant.area.TurnSignalValue
 import ai.pleos.playground.vehicle.constant.area.WindowValue
 import ai.pleos.playground.vehicle.constant.control.LightState
@@ -59,12 +61,17 @@ class RecorderService : Service() {
     private val airbagAreas = mutableListOf<SeatArea>()
     private val frontWiper = WindowArea(WindowValue.FRONT_WINDSHIELD)
 
+    // 시트·공조 구역 번호는 차종마다 달라서 capability로 받아 둔다
+    private var seatArea: SeatArea? = null
+    private var hvacArea: SeatArea? = null
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         startForegroundWithNotice()
         Recorder.running = true
+        Recorder.service = this
 
         vehicle = Vehicle(this).also { it.initialize() }
         location = FusedLocation(this).also { it.initialize() }
@@ -80,6 +87,7 @@ class RecorderService : Service() {
 
     override fun onDestroy() {
         Recorder.running = false
+        Recorder.service = null
         sensorManager.unregisterListener(accelListener)
         carProps?.unregisterCallback(speedCallback)
         car?.disconnect()
@@ -105,6 +113,7 @@ class RecorderService : Service() {
         override fun onChangeEvent(value: CarPropertyValue<*>) {
             val mps = (value.value as? Float) ?: return
             buffer.add(SignalKey.SPEED_KPH, mps * 3.6)
+            Recorder.handover?.onSpeed(mps * 3.6)
         }
         override fun onErrorEvent(propertyId: Int, areaId: Int) = warn("차속 수신 오류")
     }
@@ -175,6 +184,55 @@ class RecorderService : Service() {
             },
             { e -> warn("에어백 미지원: ${e.message}") },
         )
+        vehicle.getSeat().checkSeatForeAftPositionCapabilities(
+            { _: CapabilityConfig, bounds: Map<SeatArea, AreaBounds<Int>> -> seatArea = bounds.keys.firstOrNull() },
+            { e -> warn("시트 위치 미지원: ${e.message}") },
+        )
+        vehicle.getHVAC().checkHvacTemperatureCapabilities(
+            { bounds: Map<SeatArea, AreaBounds<Float>> -> hvacArea = bounds.keys.firstOrNull() },
+            { e -> warn("공조 온도 미지원: ${e.message}") },
+        )
+    }
+
+    // ── 맡김 모드 ─────────────────────────────────────────────────────────
+
+    fun startHandover(mode: HandoverMode) {
+        readSettings { before -> Recorder.handover = HandoverTracker(mode, before) }
+    }
+
+    fun finishHandover(onSaved: (HandoverRecord) -> Unit) {
+        val tracker = Recorder.handover ?: return
+        readSettings { after ->
+            val record = tracker.finish(after)
+            HandoverStore(this).save(record)
+            Recorder.handover = null
+            Recorder.savedCount++
+            onSaved(record)
+        }
+    }
+
+    /** 시트 위치 3종 + 공조 온도를 읽는다. 지원 안 되는 값은 비워 두고, 1.5초 안에 응답이 없으면 있는 값만으로 진행. */
+    private fun readSettings(done: (CarSettings) -> Unit) {
+        var s = CarSettings()
+        var finished = false
+        val finish = Runnable { if (!finished) { finished = true; done(s) } }
+        var remaining = 4
+        fun got(update: (CarSettings) -> CarSettings) = handler.post {
+            s = update(s)
+            if (--remaining == 0) finish.run()
+        }
+        val skip: (Exception) -> Unit = { got { it } }
+        val seat = seatArea
+        if (seat == null) repeat(3) { got { it } } else {
+            vehicle.getSeat().getCurrentSeatForeAftPosition(seat, { v -> got { it.copy(seatForeAft = v) } }, skip)
+            vehicle.getSeat().getCurrentSeatBackrestAnglePosition(seat, { v -> got { it.copy(seatBackrest = v) } }, skip)
+            vehicle.getSeat().getCurrentSeatHeightPosition(seat, { v -> got { it.copy(seatHeight = v) } }, skip)
+        }
+        val hvac = hvacArea
+        if (hvac == null) got { it } else vehicle.getHVAC().getHvacTemperature(
+            hvac, TemperatureUnit.CELSIUS, { v -> got { it.copy(hvacTempC = v) } }, skip,
+        )
+        handler.postDelayed(finish, 1_500)
     }
 
     // ── 위치 ─────────────────────────────────────────────────────────────
@@ -184,6 +242,7 @@ class RecorderService : Service() {
             data ?: return
             buffer.add(SignalKey.LAT, data.latitude)
             buffer.add(SignalKey.LON, data.longitude)
+            Recorder.handover?.onLocation(data.latitude, data.longitude)
         }
         override fun onError(e: Exception) = warn("위치: ${e.message}")
     }
@@ -299,4 +358,6 @@ object Recorder {
     @Volatile var pending: PendingCrash? = null
     @Volatile var savedCount = 0
     @Volatile var lastWarning: String? = null
+    @Volatile var service: RecorderService? = null
+    @Volatile var handover: HandoverTracker? = null
 }

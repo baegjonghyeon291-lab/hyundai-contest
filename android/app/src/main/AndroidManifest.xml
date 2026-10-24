@@ -32,6 +32,8 @@
             </intent-filter>
         </activity>
         <activity android:name=".ReportActivity" android:exported="false" />
+        <activity android:name=".HandoverActivity" android:exported="false" />
+        <activity android:name=".QrActivity" android:exported="false" />
         <service
             android:name=".RecorderService"
             android:exported="false"
