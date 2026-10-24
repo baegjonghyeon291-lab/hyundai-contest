@@ -19,28 +19,35 @@ function cellKey(lat: number, lon: number) {
   return `${Math.round(lat * CELL)}_${Math.round(lon * CELL)}`
 }
 
-function query(lat: number, lon: number) {
-  return `[out:json][timeout:15];
+// 1단계: 도로 등급·횡단보도 (가볍고 꼭 필요한 것) / 2단계: 정류장·학교 (있으면 좋은 것, 실패해도 무시)
+function roadQuery(lat: number, lon: number) {
+  return `[out:json][timeout:8];
 (
   way(around:14,${lat},${lon})[highway][highway!~"footway|path|steps|cycleway"];
-  node(around:70,${lat},${lon})[highway=crossing];
-  node(around:120,${lat},${lon})[highway=bus_stop];
-  way(around:180,${lat},${lon})[amenity~"school|kindergarten|childcare"];
-  node(around:180,${lat},${lon})[amenity~"school|kindergarten|childcare"];
+  node(around:60,${lat},${lon})[highway=crossing];
 );
 out tags center;`
 }
 
-async function overpass(lat: number, lon: number): Promise<{ elements: any[]; source: string }> {
+function poiQuery(lat: number, lon: number) {
+  return `[out:json][timeout:8];
+(
+  node(around:100,${lat},${lon})[highway=bus_stop];
+  nwr(around:150,${lat},${lon})[amenity~"^(school|kindergarten|childcare)$"];
+);
+out tags center;`
+}
+
+async function overpass(q: string, perMirrorMs: number): Promise<{ elements: any[]; source: string }> {
   let lastErr = ''
   for (const url of MIRRORS) {
     try {
       const ctrl = new AbortController()
-      const timer = setTimeout(() => ctrl.abort(), 9_000)
+      const timer = setTimeout(() => ctrl.abort(), perMirrorMs)
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'golmok-guard-prototype/0.1' },
-        body: 'data=' + encodeURIComponent(query(lat, lon)),
+        body: 'data=' + encodeURIComponent(q),
         signal: ctrl.signal,
       })
       clearTimeout(timer)
@@ -96,8 +103,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   } catch { /* 캐시 실패는 무시하고 새로 조회 */ }
   try {
-    const { elements, source } = await overpass(lat, lon)
-    const road = parse(elements, source)
+    const { elements, source } = await overpass(roadQuery(lat, lon), 9_000)
+    // 정류장·학교는 보너스: 한 미러만 짧게 시도하고 실패하면 없는 채로 응답
+    const poi = await overpass(poiQuery(lat, lon), 6_000).catch(() => ({ elements: [] as any[], source }))
+    const road = parse([...elements, ...poi.elements], source)
     put(key, JSON.stringify(road), { access: 'public', addRandomSuffix: false, allowOverwrite: true, contentType: 'application/json' }).catch(() => {})
     return res.status(200).json({ ...road, cached: false })
   } catch (e) {
