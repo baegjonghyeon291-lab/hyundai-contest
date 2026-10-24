@@ -34,3 +34,5 @@ dist-ssr
 .env*
 .env.local
 docs/out/*.mp4
+
+docs/out/_video/

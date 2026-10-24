@@ -53,6 +53,9 @@
         <activity android:name=".HandoverActivity" android:exported="false" />
         <activity android:name=".QrActivity" android:exported="false" />
         <activity android:name=".TripActivity" android:exported="false" />
+        <receiver android:name=".DemoReceiver" android:exported="true">
+            <intent-filter><action android:name="com.databox.blackbox.DEMO" /></intent-filter>
+        </receiver>
         <receiver
             android:name=".BootReceiver"
             android:exported="true">
