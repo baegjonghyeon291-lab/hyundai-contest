@@ -67,6 +67,61 @@ function runsFor(text) {
     return `<w:sdt>${props}<w:sdtContent>${runsFor(answers[n])}</w:sdtContent></w:sdt>`
   })
   xml = xml.slice(0, start) + section + xml.slice(end)
+
+  // ── 01 참가신청서: 확정된 사실만 채운다 (이메일·휴대폰·소속·작성일·서명은 사용자가 직접) ──
+  const applicant = { name: '백종현', app: '골목지킴이', role: '기획·개발', members: '1' }
+  const head = xml.slice(0, start)
+  const tail = xml.slice(start)
+  let part01 = head
+  const check = (label, nth) => { // 라벨 뒤 nth번째 "□" → "■" (선택지 글자가 다른 run에 쪼개져 있어 순서로 고른다)
+    let i = part01.indexOf(label)
+    if (i < 0) return
+    for (let k = 0; k < nth; k++) { i = part01.indexOf('□', i + 1); if (i < 0) return }
+    part01 = part01.slice(0, i) + '■' + part01.slice(i + 1)
+  }
+  check('참가 단위', 1) // 개인
+  check('참가 부문', 2) // 일반(스타트업 포함)
+  // 라벨 뒤 밑줄(여러 run에 걸침)을 지우고 값을 넣는다. 같은 문단의 다음 라벨 앞까지만.
+  const fill = (label, value, stopLabel) => {
+    const idx = part01.indexOf(label)
+    if (idx < 0) { console.warn('라벨 없음:', label); return }
+    const li = part01.lastIndexOf('<w:t', idx) // 라벨이 든 run의 시작부터 (라벨 run 자체도 바꿔야 함)
+    const pEnd = part01.indexOf('</w:p>', li)
+    let region = part01.slice(li, pEnd)
+    const stop = stopLabel ? region.indexOf(stopLabel) : -1
+    let target = stop > 0 ? region.slice(0, stop) : region
+    const rest = stop > 0 ? region.slice(stop) : ''
+    let inserted = false
+    target = target.replace(/(<w:t[^>]*>)([^<]*)(<\/w:t>)/g, (m, a, t, b) => {
+      let s = t.replace(/_+/g, '')
+      if (!inserted && s.includes(label)) { s = s.replace(label, label + ' ' + value); inserted = true }
+      return a + s + b
+    })
+    part01 = part01.slice(0, li) + target + rest + part01.slice(pEnd)
+  }
+  fill('팀명(개인 참가 시 성명):', applicant.name)
+  fill('프로젝트명:', applicant.app)
+  fill('대표자 성명:', applicant.name, '역할:')
+  fill('역할:', applicant.role)
+  fill('참가 인원:', applicant.members, '작성일:')
+  xml = part01 + tail
+  // 04 서명 페이지 하단의 앱명도 채운다
+  const sigLabel = xml.lastIndexOf('프로젝트명:')
+  if (sigLabel > end) {
+    const sigIdx = xml.lastIndexOf('<w:t', sigLabel)
+    const pEnd = xml.indexOf('</w:p>', sigIdx)
+    let p = xml.slice(sigIdx, pEnd)
+    const stop = p.indexOf('팀명(')
+    let target = stop > 0 ? p.slice(0, stop) : p
+    const rest = stop > 0 ? p.slice(stop) : ''
+    let done = false
+    target = target.replace(/(<w:t[^>]*>)([^<]*)(<\/w:t>)/g, (m, a, t, b) => {
+      let s = t.replace(/_+/g, '')
+      if (!done && s.includes('프로젝트명:')) { s = s.replace('프로젝트명:', '프로젝트명: ' + applicant.app); done = true }
+      return a + s + b
+    })
+    xml = xml.slice(0, sigIdx) + target + rest + xml.slice(pEnd)
+  }
   zip.file('word/document.xml', xml)
   fs.mkdirSync(path.dirname(out), { recursive: true })
   fs.writeFileSync(out, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }))
