@@ -35,7 +35,7 @@
 
     <application
         android:label="@string/app_name"
-        android:icon="@android:drawable/presence_video_online"
+        android:icon="@mipmap/ic_launcher"
         android:theme="@style/Theme.AppCompat.NoActionBar">
         <activity
             android:name=".MainActivity"

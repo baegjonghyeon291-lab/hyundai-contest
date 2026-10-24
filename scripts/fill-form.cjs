@@ -42,6 +42,24 @@ GitHub(소스 + APK): https://github.com/baegjonghyeon291-lab/hyundai-contest �
   8: `(없음)`,
 }
 
+// 박스 아래에 넣을 그림. 입력 박스(순수 텍스트 컨트롤) 안에는 그림이 못 들어가므로 같은 표 칸에 문단을 덧붙인다.
+// [[그림, 그림]] 한 묶음 = 한 줄 (2개면 반 폭씩). 캡션은 그림 아래 작은 글씨.
+const img = (file, caption) => ({ file: path.join(root, 'docs/img', file), caption })
+const figures = {
+  3: [[img('architecture.png', '그림 1. 아키텍처 — Pleos SDK·Car API·자체 서버 매핑')]],
+  4: [
+    [img('flow.png', '그림 2. 사용 흐름 — 큰길 → 진입 예고 → 골목 모드 → 경고 → 복귀 / 사고 → 리포트')],
+    [img('shots/02_주행중_골목진입_헤드업안내.png', '화면 1. 골목 진입 — 음성 + 헤드업 안내'), img('shots/03_주행중_위험경고_정류장앞과속.png', '화면 2. 정류장 앞 과속 — 위험 경고')],
+    [img('shots/04_사고리포트_골목모드준수.png', '화면 3. 사고 리포트 — 골목 모드 기준·안내 수신·브레이크 시점'), img('shots/05_맡김리포트_발레파킹.png', '화면 4. 맡김 리포트 — 발레파킹')],
+  ],
+  5: [[img('shots/01_메인_사고감지_골목모드.png', '화면 5. 메인 — 사고 감지 카드 · 골목 모드 · 설정'), img('shots/07_QR_휴대폰전송.png', '화면 6. QR → 휴대폰 웹 리포트')]],
+}
+const CELL_W = 9866 - 2 * 110 - 40 // 표 폭(dxa) − 셀 여백 − 테두리 여유
+const EMU_PER_DXA = 635
+let drawingId = 100
+function drawingXml(rId, cx, cy, name) {
+  return `<w:r><w:drawing><wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${drawingId}" name="${name}"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${drawingId++}" name="${name}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`
+}
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 function runsFor(text) {
   return text.split('\n').map((line, i) =>
@@ -61,11 +79,44 @@ function runsFor(text) {
   // 각 sdt 앞에서 가장 가까운 "N. " 제목을 찾아 번호로 매핑한다
   let count = 0
   // 02 섹션의 입력 박스는 보이는 번호 순서(1~8)대로 놓여 있으므로 순서로 매핑한다 (제목 텍스트는 run이 쪼개져 신뢰 불가)
-  section = section.replace(/<w:sdt>([\s\S]*?)<w:sdtContent>[\s\S]*?<\/w:sdtContent><\/w:sdt>/g, (m, props) => {
+  // 그림 파일을 word/media에 넣고 관계 ID를 만든다 (가로 1600px로 줄여 용량 절약)
+  const sharp = require('sharp')
+  let rels = await zip.file('word/_rels/document.xml.rels').async('string')
+  let relN = 900
+  const figParagraphs = {}
+  for (const [n, rows] of Object.entries(figures)) {
+    let out = ''
+    for (const row of rows) {
+      const w = row.length > 1 ? Math.floor(CELL_W * 0.47) : CELL_W
+      let runs = '', caps = ''
+      for (const f of row) {
+        const buf = await sharp(f.file).resize({ width: 1600, withoutEnlargement: true }).png().toBuffer()
+        const meta = await sharp(buf).metadata()
+        const name = `fig${relN}.png`
+        zip.file(`word/media/${name}`, buf)
+        const rId = `rId${relN++}`
+        rels = rels.replace('</Relationships>', `<Relationship Id="${rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${name}"/></Relationships>`)
+        const cx = w * EMU_PER_DXA, cy = Math.round(cx * meta.height / meta.width)
+        runs += (runs ? '<w:r><w:t xml:space="preserve">  </w:t></w:r>' : '') + drawingXml(rId, cx, cy, f.caption)
+        caps += (caps ? '<w:r><w:tab/></w:r>' : '') + `<w:r><w:rPr><w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/><w:color w:val="555555"/><w:sz w:val="16"/></w:rPr><w:t xml:space="preserve">${esc(f.caption)}</w:t></w:r>`
+      }
+      out += `<w:p><w:pPr><w:keepNext/><w:spacing w:before="120" w:after="0"/><w:jc w:val="center"/></w:pPr>${runs}</w:p>`
+      out += `<w:p><w:pPr><w:spacing w:before="0" w:after="60"/><w:jc w:val="center"/></w:pPr>${caps}</w:p>`
+    }
+    figParagraphs[n] = out
+  }
+  zip.file('word/_rels/document.xml.rels', rels)
+  let ct = await zip.file('[Content_Types].xml').async('string')
+  if (!ct.includes('Extension="png"')) ct = ct.replace('<Default ', '<Default Extension="png" ContentType="image/png"/><Default ')
+  zip.file('[Content_Types].xml', ct)
+
+  section = section.replace(/<w:sdt>([\s\S]*?)<w:sdtContent>[\s\S]*?<\/w:sdtContent><\/w:sdt><\/w:p>/g, (m, props) => {
     const n = ++count
     if (!answers[n]) return m
-    return `<w:sdt>${props}<w:sdtContent>${runsFor(answers[n])}</w:sdtContent></w:sdt>`
+    return `<w:sdt>${props}<w:sdtContent>${runsFor(answers[n])}</w:sdtContent></w:sdt></w:p>${figParagraphs[n] || ''}`
   })
+  // 양식의 박스 행은 '페이지를 넘어 나뉘지 않음'이라 내용이 길면 행 전체가 다음 쪽으로 밀려 빈 쪽이 생긴다 → 나뉘게 허용
+  section = section.split('<w:cantSplit/>').join('')
   xml = xml.slice(0, start) + section + xml.slice(end)
 
   // ── 01 참가신청서: 확정된 사실만 채운다 (이메일·휴대폰·소속·작성일·서명은 사용자가 직접) ──
