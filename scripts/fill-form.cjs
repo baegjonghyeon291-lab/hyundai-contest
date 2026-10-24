@@ -54,7 +54,7 @@ function runsFor(text) {
   let xml = await zip.file('word/document.xml').async('string')
   // 제목 텍스트가 여러 run으로 쪼개져 있을 수 있어, 확실히 한 run에 있는 '1. 앱 한 줄 소개'를 기준으로 잡는다
   const start = xml.lastIndexOf('<w:p', xml.indexOf('1. 앱 한 줄 소개'))
-  const end = xml.indexOf('개인정보 수집·이용 동의서')
+  const end = xml.indexOf('개인정보 수집') // 03 동의서 제목 (가운뎃점 글자가 달라 앞부분만 매칭)
   if (start < 0 || end < 0) throw new Error('양식에서 02 섹션을 찾지 못함')
   let section = xml.slice(start, end)
 

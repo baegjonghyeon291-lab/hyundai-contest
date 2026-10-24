@@ -5,3 +5,5 @@
 *.cmd text eol=crlf
 *.jar binary
 *.apk binary
+*.docx binary
+*.mp4 binary
