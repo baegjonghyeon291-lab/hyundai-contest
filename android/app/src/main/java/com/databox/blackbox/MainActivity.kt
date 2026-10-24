@@ -71,12 +71,27 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private var car: android.car.Car? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         settings = Settings(this)
         setContentView(buildLayout())
         requestPermissionsThenStart()
+        watchDrivingRestrictions()
     }
+
+    /** 주행 제한(CarUxRestrictions)이 걸리면 주행용 단순 화면으로 바꾼다. */
+    private fun watchDrivingRestrictions() = runCatching {
+        val c = android.car.Car.createCar(this)
+        car = c
+        val m = c.getCarManager(android.car.Car.CAR_UX_RESTRICTION_SERVICE) as android.car.drivingstate.CarUxRestrictionsManager
+        val toDrive = { if (!isFinishing) startActivity(Intent(this, DriveActivity::class.java)) }
+        if (m.currentCarUxRestrictions?.isRequiresDistractionOptimization == true) toDrive()
+        m.registerListener { r -> if (r.isRequiresDistractionOptimization) toDrive() }
+    }.onFailure { android.util.Log.w("DataBlackBox", "주행 제한 감시 실패: ${it.message}") }
+
+    override fun onDestroy() { runCatching { car?.disconnect() }; super.onDestroy() }
 
     override fun onResume() {
         super.onResume()
