@@ -6,8 +6,8 @@ import { list, put } from '@vercel/blob'
 const CELL = 2000
 const TTL_MS = 7 * 24 * 3600 * 1000
 const MIRRORS = [
-  'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass-api.de/api/interpreter',
   'https://lz4.overpass-api.de/api/interpreter',
 ]
 const ALLEY_RANK = ['living_street', 'pedestrian', 'service', 'residential', 'unclassified', 'tertiary', 'secondary', 'primary', 'trunk', 'motorway']
@@ -36,7 +36,7 @@ async function overpass(lat: number, lon: number): Promise<{ elements: any[]; so
   for (const url of MIRRORS) {
     try {
       const ctrl = new AbortController()
-      const timer = setTimeout(() => ctrl.abort(), 12_000)
+      const timer = setTimeout(() => ctrl.abort(), 9_000)
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'golmok-guard-prototype/0.1' },

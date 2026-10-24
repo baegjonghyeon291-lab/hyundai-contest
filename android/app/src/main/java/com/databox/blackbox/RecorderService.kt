@@ -544,6 +544,7 @@ class RecorderService : Service() {
     }
 
     private fun say(text: String) {
+        Log.i(TAG, "음성: $text")
         if (ttsReady) runCatching { tts?.speak(text, false) }.onFailure { warn("음성 안내 실패: ${it.message}") }
     }
 

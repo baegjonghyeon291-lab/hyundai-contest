@@ -66,7 +66,7 @@ object Osm {
     private fun fetch(lat: Double, lon: Double): RoadContext {
         val conn = (URL("$ENDPOINT?lat=$lat&lon=$lon").openConnection() as HttpURLConnection).apply {
             connectTimeout = 8_000
-            readTimeout = 20_000
+            readTimeout = 32_000 // 서버가 지도 미러 여러 곳을 돌 수 있어 넉넉히
             setRequestProperty("User-Agent", "golmok-guard-car/0.1")
         }
         if (conn.responseCode != 200) throw IllegalStateException("HTTP ${conn.responseCode}")

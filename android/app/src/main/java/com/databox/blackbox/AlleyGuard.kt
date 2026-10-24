@@ -184,6 +184,11 @@ class AlleyGuard(
                 if (st == LightState.ON) light.setCabinLightSwitch(LightSwitch.OFF, { }, { e -> warn("실내등: ${e.message}") })
             }, { e -> warn("실내등 상태: ${e.message}") })
             buffer.add(SignalKey.AUTO_LIGHTS, 1.0)
+            // 제어가 실제 반영됐는지 되읽어 기록 (에뮬레이터·차종별 지원 확인용)
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                light.getCurrentLowBeamLightState({ st -> Log.i(TAG, "전조등 되읽기: $st") }, { })
+                vehicle.getWindow().getCurrentWindowPosition(driverWindow, { p -> Log.i(TAG, "창문 되읽기: $p / max $windowMax") }, { })
+            }, 1500)
         }
         ambient(AMBER)
         if (settings.autoWindow) runCatching {
@@ -211,7 +216,8 @@ class AlleyGuard(
             prevLowBeam?.let { if (it != LightState.ON) light.setLowBeamLightSwitch(LightSwitch.OFF, { }, { }) }
             prevFog?.let { if (it != LightState.ON) light.setFrontFogLightSwitch(LightSwitch.OFF, { }, { }) }
             prevCabin?.let { if (it == LightState.ON) light.setCabinLightSwitch(LightSwitch.ON, { }, { }) }
-            light.setAmbientLightSwitch(driverSeat, LightSwitch.AUTOMATIC, { _, _ -> }, { })
+            ambientArea?.let { light.setAmbientLightSwitch(it, LightSwitch.AUTOMATIC, { _, _ -> }, { }) }
+            lastAmbient = null
         }
         runCatching { prevWindow?.let { vehicle.getWindow().setWindowPosition(driverWindow, it, { _, _ -> }, { }) } }
         runCatching { prevVolume?.let { context.getSystemService(AudioManager::class.java).setStreamVolume(AudioManager.STREAM_MUSIC, it, 0) } }
@@ -220,10 +226,30 @@ class AlleyGuard(
         buffer.add(SignalKey.AUTO_LIGHTS, 0.0)
     }
 
-    private fun ambient(color: Int) = runCatching {
+    // 무드등 구역은 차종마다 달라 capability로 받는다. 같은 색은 반복 전송하지 않는다.
+    private var ambientArea: SeatArea? = null
+    private var ambientChecked = false
+    private var lastAmbient: Int? = null
+
+    private fun ambient(color: Int) {
+        if (lastAmbient == color) return
         val light = vehicle.getLight()
-        light.setAmbientLightSwitch(driverSeat, LightSwitch.ON, { _, _ -> }, { })
-        light.setAmbientLightBrightnessColor(driverSeat, color, { _, _ -> }, { e -> warn("무드등: ${e.message}") })
+        if (!ambientChecked) {
+            ambientChecked = true
+            runCatching {
+                light.checkAmbientLightBrightnessColorCapabilities(
+                    { _: CapabilityConfig, areas: List<SeatArea> -> ambientArea = areas.firstOrNull(); if (ambientArea != null) ambient(color) },
+                    { e -> warn("무드등 미지원: ${e.message}") },
+                )
+            }
+            return
+        }
+        val area = ambientArea ?: return
+        lastAmbient = color
+        runCatching {
+            light.setAmbientLightSwitch(area, LightSwitch.ON, { _, _ -> }, { })
+            light.setAmbientLightBrightnessColor(area, color, { _, _ -> }, { e -> warn("무드등: ${e.message}") })
+        }
     }
 
     // ── 하차 측면 안내 ───────────────────────────────────────────────────
