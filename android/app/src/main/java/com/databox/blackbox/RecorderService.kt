@@ -102,7 +102,11 @@ class RecorderService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     // 시스템이 서비스를 정리해도 다시 살아나 기록을 이어 간다
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int) = START_STICKY
+    // startForegroundService()로 다시 불린 경우에도 10초 안에 startForeground()를 호출해야 ANR이 나지 않는다 (멱등)
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        runCatching { startForegroundWithNotice() }
+        return START_STICKY
+    }
 
     override fun onCreate() {
         super.onCreate()
