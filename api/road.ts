@@ -94,12 +94,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const lat = Number(req.query.lat), lon = Number(req.query.lon)
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return res.status(400).json({ error: 'lat, lon required' })
   const key = `road/${cellKey(lat, lon)}.json`
+  let stale: any = null // 만료된 캐시: 지도 서버가 실패할 때 '모름'보다 낫다(도로 등급은 거의 안 변함)
   try {
     const { blobs } = await list({ prefix: key, limit: 1 })
     const hit = blobs.find((b) => b.pathname === key)
-    if (hit && Date.now() - new Date(hit.uploadedAt).getTime() < TTL_MS) {
+    if (hit) {
       const cached = await (await fetch(hit.url, { cache: 'no-store' })).json()
-      return res.status(200).json({ ...cached, cached: true })
+      if (Date.now() - new Date(hit.uploadedAt).getTime() < TTL_MS) return res.status(200).json({ ...cached, cached: true })
+      stale = cached
     }
   } catch { /* 캐시 실패는 무시하고 새로 조회 */ }
   try {
@@ -110,6 +112,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     put(key, JSON.stringify(road), { access: 'public', addRandomSuffix: false, allowOverwrite: true, contentType: 'application/json' }).catch(() => {})
     return res.status(200).json({ ...road, cached: false })
   } catch (e) {
+    if (stale?.roadClass) return res.status(200).json({ ...stale, cached: true, stale: true })
     // 지도 서버가 느리거나 막혀도 차 안의 앱은 멈추면 안 된다: '모름'으로 응답(캐시 안 함) → 앱은 일반 도로로 취급
     return res.status(200).json({ roadClass: null, roadName: null, maxspeedKph: null, hazards: [], fetchedAt: Date.now(), source: 'unavailable', unavailable: true, error: (e as Error).message })
   }
