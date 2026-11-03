@@ -244,6 +244,23 @@ function runsFor(text) {
     })
     xml = xml.slice(0, sigIdx) + target + rest + xml.slice(pEnd)
   }
+  // 04 서명 표 '대표자' 줄: 성명·동의 체크·서명일자 (사용자가 채팅에서 동의 체크를 직접 지시한 경우에만, 본인 서명은 비워 둠)
+  if (contact && contact.consent) {
+    const si = xml.indexOf('서명일자')
+    const tb = xml.lastIndexOf('<w:tbl>', si), te = xml.indexOf('</w:tbl>', si)
+    let tbl = xml.slice(tb, te)
+    const rows = tbl.split('<w:tr ')
+    const r = rows[2] // [0]=표 머리, [1]=헤더 행, [2]=대표자 행
+    if (!r || !r.includes('□ 동의')) throw new Error('04 표의 대표자 행을 찾지 못함')
+    const cells = r.split('<w:tc>')
+    const run = (t) => '<w:r><w:t>' + t + '</w:t></w:r>'
+    cells[2] = cells[2].replace('</w:pPr></w:p>', '</w:pPr>' + run(contact.signName) + '</w:p>')
+    cells[3] = cells[3].replace('□ 동의', '■ 동의')
+    cells[5] = cells[5].replace('</w:pPr></w:p>', '</w:pPr>' + run(contact.signDate) + '</w:p>')
+    rows[2] = cells.join('<w:tc>')
+    tbl = rows.join('<w:tr ')
+    xml = xml.slice(0, tb) + tbl + xml.slice(te)
+  }
   zip.file('word/document.xml', xml)
   fs.mkdirSync(path.dirname(out), { recursive: true })
   fs.writeFileSync(out, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }))
