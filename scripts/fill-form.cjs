@@ -244,6 +244,20 @@ function runsFor(text) {
     })
     xml = xml.slice(0, sigIdx) + target + rest + xml.slice(pEnd)
   }
+  // 01 B. 참가 구성원 표: 개인 참가라 대표자 본인 1줄 (소속은 선택이라 비움)
+  if (contact) {
+    const bi = xml.indexOf('B. 참가 구성원')
+    const tb0 = xml.indexOf('<w:tbl>', bi), te0 = xml.indexOf('</w:tbl>', tb0)
+    const rows0 = xml.slice(tb0, te0).split('<w:tr ')
+    const cells0 = rows0[2].split('<w:tc>') // [0]=행 머리, 1~5=성명·소속·휴대폰·이메일·역할
+    const vals = [applicant.name, '', contact.phone, contact.email, applicant.role]
+    vals.forEach((v, i) => {
+      if (!v) return
+      cells0[i + 1] = cells0[i + 1].replace('</w:pPr></w:p>', '<w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t>' + v + '</w:t></w:r></w:p>')
+    })
+    rows0[2] = cells0.join('<w:tc>')
+    xml = xml.slice(0, tb0) + rows0.join('<w:tr ') + xml.slice(te0)
+  }
   // 04 서명 표 '대표자' 줄: 성명·동의 체크·서명일자 (사용자가 채팅에서 동의 체크를 직접 지시한 경우에만, 본인 서명은 비워 둠)
   if (contact && contact.consent) {
     const si = xml.indexOf('서명일자')
