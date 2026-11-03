@@ -257,6 +257,21 @@ function runsFor(text) {
     cells[2] = cells[2].replace('</w:pPr></w:p>', '</w:pPr>' + run(contact.signName) + '</w:p>')
     cells[3] = cells[3].replace('□ 동의', '■ 동의')
     cells[5] = cells[5].replace('</w:pPr></w:p>', '</w:pPr>' + run(contact.signDate) + '</w:p>')
+    // 본인 서명 이미지(submit/signature.png, 투명 배경)가 있으면 서명 칸에 넣는다
+    const sigFile = path.join(root, 'submit/signature.png')
+    if (fs.existsSync(sigFile)) {
+      const sbuf = fs.readFileSync(sigFile)
+      const sw = sbuf.readUInt32BE(16), sh = sbuf.readUInt32BE(20)
+      zip.file('word/media/signature.png', sbuf)
+      let rels2 = await zip.file('word/_rels/document.xml.rels').async('string')
+      rels2 = rels2.replace('</Relationships>', '<Relationship Id="rId990" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/signature.png"/></Relationships>')
+      zip.file('word/_rels/document.xml.rels', rels2)
+      const cellW = Number((cells[4].match(/<w:tcW w:w="(d+)"/) || [])[1] || 1900)
+      const wDxa = Math.min(cellW - 160, 1700)
+      const cx = wDxa * EMU_PER_DXA, cy = Math.round(cx * sh / sw)
+      const drawing = drawingXml('rId990', cx, cy, '본인 서명')
+      cells[4] = cells[4].replace('</w:pPr></w:p>', '<w:jc w:val="center"/></w:pPr>' + drawing + '</w:p>')
+    }
     rows[2] = cells.join('<w:tc>')
     tbl = rows.join('<w:tr ')
     xml = xml.slice(0, tb) + tbl + xml.slice(te)
