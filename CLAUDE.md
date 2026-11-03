@@ -25,6 +25,7 @@
 - 수상작은 실제 차량 출시 검토 → 실현 가능성·Pleos API 활용도가 중요
 
 ## 진행 상황 / 결정 사항
+- 2026-11-03: 양식 02 전면 재작성(개조식, 대괄호 소제목·장식 대시 제거 → AI 문체 완화), 어린이보호구역 형사처벌(특가법) 근거 추가, 핫스팟 콜드스타트(공공 사고다발지역으로 시드) 문구, 시나리오 숫자를 시연 영상과 일치. 비 올 때 창문 안 여는 코드 수정(AlleyGuard) + release APK 재빌드. 심사용 GitHub 계정 ID는 사이트 어디에도 없음 → 주최 측 문의 필요.
 - 2026-11-01: **제출 전 점검** — 사고 리포트 데모가 "→ 초과"로 찍혀 "운전자를 지킨다" 주장과 모순 → 충돌 속도 16km/h(기준 20)로 재녹화해 "준수 ✓"로 교체(영상·양식 스크린샷). /api/road 시드 캐시 TTL 만료로 장애 → 만료 캐시 폴백 추가. RecorderService.onStartCommand에서 startForeground 멱등 호출 보강(ANR 방지). 양식 02에 데이터 소유·공유 문구 추가. 저장소는 아직 PRIVATE(제출 시 Public 전환 또는 심사 계정 Collaborator 초대 필요).
 - 2026-10-24 저녁: **골목지킴이 v1.1 구현·검증 완료** — AlleyEngine/AlleyGuard(내비·/api/road·핫스팟·차량신호 → 음성+헤드업 알림+조명/무드등/창문/볼륨/김서림 제어), /api/road(서버 측 OSM 조회+Blob 캐시+시연 구간 시드 scripts/seed-road.mjs), /api/hotspots(Blob), 사고 직후 대응(Emergency), DriveActivity(DO), 기획서 초안 docs/plan.md + 별지 DOCX(scripts/build-plan-docx.cjs → docs/out/), 시연 영상 초안 docs/out/*.mp4(gitignore), release APK apk/골목지킴이_release.apk. **검증 방법**: Virtual Console은 브라우저 탭 대신 `curl -X POST http://127.0.0.1:8088/browser/session?client=x`를 1초마다 보내는 하트비트 루프로 활성 유지(탭이 뒤로 가면 emulator_inactive 됨). 주행 중(D)에는 플랫폼 주행뷰가 앱을 가림 → 헤드업 알림으로 안내(동작 확인). 에뮬레이터 한계: 전조등 set 오류 50001, 안개등 미지원. 참가자: 백종현(개인·일반). 남은 것: 공식 양식 02 박스 채우기, 공공데이터 사고다발지역(API 키 필요), 시연 영상 자막.
 - 2026-10-24: **메인 확정: 골목지킴이**(골목 보행자 돌발 진입 예방) + 보조 데이터 블랙박스. 전체 할 일·우선순위는 **docs/roadmap.md** (1단계 11/15, 2단계 12/3). 불가 기능 목록도 거기에 — 다시 검토하지 말 것.

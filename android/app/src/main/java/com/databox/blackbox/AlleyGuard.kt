@@ -203,7 +203,8 @@ class AlleyGuard(
             }, 1500)
         }
         ambient(AMBER)
-        if (settings.autoWindow) runCatching {
+        // 비 올 때(와이퍼 작동)는 창문을 열지 않는다
+        if (settings.autoWindow && !s.rain) runCatching {
             vehicle.getWindow().getCurrentWindowPosition(driverWindow, { pos -> prevWindow = pos
                 val crack = maxOf(1, windowMax / 10)
                 if ((pos ?: 0) < crack) vehicle.getWindow().setWindowPosition(driverWindow, crack, { _, _ -> }, { e -> warn("창문: ${e.message}") })
