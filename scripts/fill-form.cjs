@@ -7,7 +7,8 @@ const JSZip = require('jszip')
 
 const root = path.join(__dirname, '..')
 const src = path.join(root, 'docs/form/contest-application-consent.docx')
-const out = path.join(root, 'docs/out/골목지킴이_접수양식_02작성.docx')
+const hasContact = fs.existsSync(path.join(root, 'submit/contact.json'))
+const out = path.join(root, hasContact ? 'submit/골목지킴이_접수양식_제출용.docx' : 'docs/out/골목지킴이_접수양식_02작성.docx')
 
 // 박스별 내용 (양식에 보이는 번호 기준). 분량 제한 없음이지만 박스는 요약, 상세는 별지.
 const answers = {
@@ -201,6 +202,30 @@ function runsFor(text) {
   fill('대표자 성명:', applicant.name, '역할:')
   fill('역할:', applicant.role)
   fill('참가 인원:', applicant.members, '작성일:')
+  // 연락처·작성일 (사용자가 채팅으로 알려 준 값)
+  const contactFile = path.join(root, 'submit/contact.json') // 개인정보라 gitignore, 있을 때만 채움
+  const contact = fs.existsSync(contactFile) ? JSON.parse(fs.readFileSync(contactFile, 'utf8')) : null
+  if (contact) {
+  fill('대표자 이메일:', contact.email)
+  fill('대표자 휴대폰번호', '')
+  {
+    // 라벨과 ':'가 다른 run이라 값이 콜론 앞에 들어가지 않게 ': ' run 뒤에 넣는다
+    const i = part01.indexOf('대표자 휴대폰번호')
+    const j = part01.indexOf(': ', i)
+    part01 = part01.slice(0, j + 2) + contact.phone + part01.slice(j + 2)
+  }
+  {
+    const idx = part01.indexOf('작성일: ')
+    const li = part01.lastIndexOf('<w:t', idx)
+    const pEnd = part01.indexOf('</w:p>', li)
+    let seg = part01.slice(li, pEnd), first = true
+    seg = seg.replace(/(<w:t[^>]*>)([^<]*)(<\/w:t>)/g, (m, a, t, b) => {
+      if (first) { first = false; return a + '작성일: ' + contact.y + '년 ' + contact.m + '월 ' + contact.d + '일' + b }
+      return a + b
+    })
+    part01 = part01.slice(0, li) + seg + part01.slice(pEnd)
+  }
+  }
   xml = part01 + tail
   // 04 서명 페이지 하단의 앱명도 채운다
   const sigLabel = xml.lastIndexOf('프로젝트명:')
