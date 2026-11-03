@@ -207,6 +207,12 @@ function runsFor(text) {
   const contact = fs.existsSync(contactFile) ? JSON.parse(fs.readFileSync(contactFile, 'utf8')) : null
   if (contact) {
   fill('대표자 이메일:', contact.email)
+  {
+    const i = part01.indexOf('대표자 소속')
+    const j = part01.indexOf('___', i)
+    const e = part01.indexOf('</w:t>', j)
+    part01 = part01.slice(0, j) + '개인' + part01.slice(e)
+  }
   fill('대표자 휴대폰번호', '')
   {
     // 라벨과 ':'가 다른 run이라 값이 콜론 앞에 들어가지 않게 ': ' run 뒤에 넣는다
@@ -250,7 +256,7 @@ function runsFor(text) {
     const tb0 = xml.indexOf('<w:tbl>', bi), te0 = xml.indexOf('</w:tbl>', tb0)
     const rows0 = xml.slice(tb0, te0).split('<w:tr ')
     const cells0 = rows0[2].split('<w:tc>') // [0]=행 머리, 1~5=성명·소속·휴대폰·이메일·역할
-    const vals = [applicant.name, '', contact.phone, contact.email, applicant.role]
+    const vals = [applicant.name, '개인', contact.phone, contact.email, applicant.role]
     vals.forEach((v, i) => {
       if (!v) return
       cells0[i + 1] = cells0[i + 1].replace('</w:pPr></w:p>', '<w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t>' + v + '</w:t></w:r></w:p>')
