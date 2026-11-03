@@ -36,3 +36,7 @@ dist-ssr
 docs/out/*.mp4
 
 docs/out/_video/
+
+# 작업 메모·로컬 도구 설정 (저장소에 올리지 않음)
+CLAUDE.md
+.claude/
