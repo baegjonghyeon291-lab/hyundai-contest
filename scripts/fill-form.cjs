@@ -24,10 +24,10 @@ const answers = {
 - Pleos Connect가 이 신호(차속·기어·방향지시등·브레이크·조명·와이퍼·핸들·좌석·문)와 제어(조명·창문·공조·음성)를 앱에 열어 주었기 때문에 가능해진 기획임.`,
   3: `1) 골목 감속 가이드 (핵심)
 - 진입 감지: 내비 주의지점(좁은 길·어린이보호구역·사고다발·과속방지턱, 남은 거리) + 지도의 도로 등급·제한속도(이면도로, 20·30 구간) + 차량 신호(방향지시등·핸들 각도·다음 회전)를 합쳐 판단
-- 진입 50m 전 예고: "곧 골목길입니다. 브레이크에 발을 올리고 30 이하로 준비하세요". 제동을 대신해 주는 것이 아니라 운전자가 미리 준비하게 함
-- 기준 속도: 골목 30km/h, 어린이보호구역·등하교 시간·보행자 구역 20km/h. 초과하면 음성 + 무드등 적색, 횡단보도·정류장 앞 과속은 즉시 감속 안내
+- 진입 직전 예고(다음 회전 60m 이내, 또는 방향지시등을 켜고 핸들을 꺾을 때): "곧 골목길입니다. 브레이크에 발을 올리고 30 이하로 준비하세요". 제동을 대신해 주는 것이 아니라 운전자가 미리 준비하게 함
+- 기준 속도: 골목 30km/h, 어린이보호구역·제한속도 20 도로·보행자 구역·등하교 시간 학교 주변 20km/h. 초과하면 음성 + 무드등 적색, 횡단보도·정류장 앞 과속은 즉시 감속 안내
 2) 급제동 핫스팟 (핵심)
-- 여러 차의 급제동 지점(위치·시각·직전 속도만, 식별 정보 없음)을 50m 격자로 모음. 접근하면 "이 구간에서 다른 운전자들이 최근 N번 급제동했어요"
+- 여러 차의 급제동 지점(위치·시각·직전 속도만, 식별 정보 없음)을 약 55m 격자로 모음. 접근하면 "이 구간에서 다른 운전자들이 최근 N번 급제동했어요"
 - 공공 사고다발지역 데이터는 '사고 난 곳', 이것은 '사고 날 뻔한 곳'. 초기에는 공공 사고다발지역과 내비 주의지점으로 채우고, 차가 늘수록 실제 급제동 데이터로 바뀜
 3) 데이터 블랙박스 + 사고 직후 대응 (핵심)
 - 차속(차량 신호)·기어·방향지시등·브레이크·조명·와이퍼·핸들·위치·가속도를 상시 기록(1시간 약 2MB). 충격 2.5G 또는 에어백 전개 시 충돌 전 30초~후 10초 저장
@@ -83,7 +83,7 @@ const answers = {
 5) 향후 확장
 - Pleos가 ADAS API(추적 물체·충돌 경고·운전자 모니터링·외부음)를 앱에 개방하면 센서 입력만 교체해 즉시 연동(현재 구조 유지). 실시간 급제동 알림, 어린이보호구역 우회, 보행자 앱 연동(V2P), 주간 안전 점수`,
   7: `별지: 골목지킴이_기획서_별지.docx (상세 기획 + 그림: 사용 흐름도, 아키텍처·Pleos API 매핑, 에뮬레이터 화면 캡처 7장)
-시연 영상: 백종현_골목지킴이_시연영상.mp4 (Pleos Connect Emulator에서 골목 진입·경고·사고 리포트·맡김 리포트 재현, 2분 20초)
+시연 영상: 백종현_골목지킴이_시연영상.mp4 (Pleos Connect Emulator에서 골목 진입·경고·사고 리포트·맡김 리포트 재현, 2분 18초)
 GitHub(소스 + APK): https://github.com/baegjonghyeon291-lab/hyundai-contest (apk/ 폴더, README에 실행 방법과 테스트 환경)
 웹 리포트·프로토타입: https://hyundai-contest.vercel.app`,
   8: `(없음)`,
@@ -286,8 +286,9 @@ function runsFor(text) {
       let rels2 = await zip.file('word/_rels/document.xml.rels').async('string')
       rels2 = rels2.replace('</Relationships>', '<Relationship Id="rId990" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/signature.png"/></Relationships>')
       zip.file('word/_rels/document.xml.rels', rels2)
-      const cellW = Number((cells[4].match(/<w:tcW w:w="(d+)"/) || [])[1] || 1900)
-      const wDxa = Math.min(cellW - 160, 1700)
+      const cellW = Number((cells[4].match(/<w:tcW w:w="(\d+)"/) || [])[1] || 1900)
+      // 칸 안에 들어가게: 높이 약 1cm(560dxa) 이하, 폭은 칸 폭 − 여백 이하
+      const wDxa = Math.min(cellW - 200, Math.round(560 * sw / sh))
       const cx = wDxa * EMU_PER_DXA, cy = Math.round(cx * sh / sw)
       const drawing = drawingXml('rId990', cx, cy, '본인 서명')
       cells[4] = cells[4].replace('</w:pPr></w:p>', '<w:jc w:val="center"/></w:pPr>' + drawing + '</w:p>')
